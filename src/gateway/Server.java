@@ -5,6 +5,7 @@ import static gateway.RequestUrls.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
@@ -69,6 +70,7 @@ public class Server extends Thread {
 
 		@Override
 		public void run() {
+			// TODO close io streams
 			try {
 				BufferedReader in = new BufferedReader(new InputStreamReader(
 						socket.getInputStream()));
@@ -77,19 +79,27 @@ public class Server extends Thread {
 				if (httpRequest.length != 3 || httpRequest[0] != "GET") {
 					// TODO handle error
 				}
-				URL url = new URL(httpRequest[1]);
+				URL url = new URL("http", "localhost", httpRequest[1]);
 
 				Request request;
 				switch (url.getPath()) {
 				case NEARBY_SEARCH_PATH:
 					request = new Request(NEARBY_SEARCH_API_URL, url.getQuery());
+					break;
 				case TEXT_SEARCH_PATH:
 					request = new Request(TEXT_SEARCH_API_URL, url.getQuery());
+					break;
 				case RADAR_SEARCH_PATH:
 					request = new Request(RADAR_SEARCH_API_URL, url.getQuery());
+					break;
 				default:
 					// TODO handle error
+					return;
 				}
+
+				PrintWriter out = new PrintWriter(socket.getOutputStream(),
+						true);
+				String response = request.makeRequest(out);
 			} catch (IOException e) {
 				e.printStackTrace();
 				return;

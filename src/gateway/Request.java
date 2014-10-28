@@ -1,9 +1,16 @@
 package gateway;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.net.ssl.HttpsURLConnection;
 
 public class Request {
 
@@ -17,6 +24,23 @@ public class Request {
 
 	public String getQueryValue(String parameter) {
 		return queryValues.get(parameter);
+	}
+
+	// TODO handle errors
+	public String makeRequest(PrintWriter out) throws IOException {
+		HttpURLConnection connection = (HttpsURLConnection) url
+				.openConnection();
+		BufferedReader in = new BufferedReader(new InputStreamReader(
+				connection.getInputStream()));
+
+		StringBuilder response = new StringBuilder();
+		String line;
+		while ((line = in.readLine()) != null) {
+			out.println(line);
+			response.append(line);
+		}
+
+		return response.toString();
 	}
 
 	private static Map<String, String> parseQuery(String query) {
