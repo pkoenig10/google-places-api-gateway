@@ -1,5 +1,8 @@
 package gateway;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
@@ -41,6 +44,14 @@ public class Server extends Thread {
 				break;
 			}
 		}
+
+		try {
+			serverSocket.close();
+		} catch (IOException e) {
+			// Ignore because we're about to exit anyway.
+		} finally {
+			executor.shutdown();
+		}
 	}
 
 	private static class ClientHandler implements Runnable {
@@ -55,7 +66,20 @@ public class Server extends Thread {
 
 		@Override
 		public void run() {
-			
+			try {
+				BufferedReader in = new BufferedReader(new InputStreamReader(
+						socket.getInputStream()));
+				String request = in.readLine();
+			} catch (IOException e) {
+				e.printStackTrace();
+				return;
+			} finally {
+				try {
+					socket.close();
+				} catch (IOException e) {
+					// Ignore because we're about to exit anyway.
+				}
+			}
 		}
 	}
 
