@@ -7,7 +7,13 @@ package gateway;
  */
 public interface RequestUrls {
 
-	public static final String nearbySearchURL = "https://maps.googleapis.com/maps/api/place/nearbysearch/";
-	public static final String textSearchURL = "https://maps.googleapis.com/maps/api/place/textsearch/";
-	public static final String radarSearchURL = "https://maps.googleapis.com/maps/api/place/radarsearch/";
+	// URL paths used by the client to interact with the gateway
+	public static final String NEARBY_SEARCH_PATH = "/google-places-api-gateway/nearbysearch";
+	public static final String TEXT_SEARCH_PATH = "/google-places-api-gateway/textsearch";
+	public static final String RADAR_SEARCH_PATH = "/google-places-api-gateway/radarsearch";
+
+	// URLs used by the gateway to interact with the API
+	public static final String NEARBY_SEARCH_API_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?";
+	public static final String TEXT_SEARCH_API_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json?";
+	public static final String RADAR_SEARCH_API_URL = "https://maps.googleapis.com/maps/api/place/radarsearch/json?";
 }

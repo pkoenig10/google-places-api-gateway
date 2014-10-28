@@ -8,16 +8,16 @@ package places.textSearch;
 public class TextSeachParameters {
 
 	// Required parameters
-	public static final String query = "query";
-	public static final String key = "key";
+	public static final String QUERY = "query";
+	public static final String KEY = "key";
 
 	// Optional parameters
-	public static final String location = "location";
-	public static final String radius = "radius";
-	public static final String language = "language";
-	public static final String minprice = "minprice";
-	public static final String maxprice = "maxprice";
-	public static final String opennow = "opennow";
-	public static final String types = "types";
-	public static final String zagatselected = "zagatselected";
+	public static final String LOCATION = "location";
+	public static final String RADIUS = "radius";
+	public static final String LANGUAGE = "language";
+	public static final String MINPRICE = "minprice";
+	public static final String MAXPRICE = "maxprice";
+	public static final String OPENNOW = "opennow";
+	public static final String TYPES = "types";
+	public static final String ZAGATSELECTED = "zagatselected";
 }

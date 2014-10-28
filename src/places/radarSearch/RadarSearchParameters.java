@@ -8,16 +8,16 @@ package places.radarSearch;
 public interface RadarSearchParameters {
 
 	// Required parameters
-	public static final String key = "key";
-	public static final String location = "location";
-	public static final String radius = "radius";
+	public static final String KEY = "key";
+	public static final String LOCATION = "location";
+	public static final String RADIUS = "radius";
 
 	// Optional parameters
-	public static final String keyword = "keyword";
-	public static final String minprice = "minprice";
-	public static final String maxprice = "maxprice";
-	public static final String name = "name";
-	public static final String opennow = "opennow";
-	public static final String types = "types";
-	public static final String zagatselected = "zagatselected";
+	public static final String KEYWORD = "keyword";
+	public static final String MINPRICE = "minprice";
+	public static final String MAXPRICE = "maxprice";
+	public static final String NAME = "name";
+	public static final String OPENNOW = "opennow";
+	public static final String TYPES = "types";
+	public static final String ZAGATSELECTED = "zagatselected";
 }
