@@ -1,10 +1,13 @@
 package gateway;
 
+import static gateway.RequestUrls.*;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -69,7 +72,24 @@ public class Server extends Thread {
 			try {
 				BufferedReader in = new BufferedReader(new InputStreamReader(
 						socket.getInputStream()));
-				String request = in.readLine();
+
+				String[] httpRequest = in.readLine().split(" ");
+				if (httpRequest.length != 3 || httpRequest[0] != "GET") {
+					// TODO handle error
+				}
+				URL url = new URL(httpRequest[1]);
+
+				Request request;
+				switch (url.getPath()) {
+				case NEARBY_SEARCH_PATH:
+					request = new Request(NEARBY_SEARCH_API_URL, url.getQuery());
+				case TEXT_SEARCH_PATH:
+					request = new Request(TEXT_SEARCH_API_URL, url.getQuery());
+				case RADAR_SEARCH_PATH:
+					request = new Request(RADAR_SEARCH_API_URL, url.getQuery());
+				default:
+					// TODO handle error
+				}
 			} catch (IOException e) {
 				e.printStackTrace();
 				return;
