@@ -1,4 +1,4 @@
-package gateway;
+package places;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,12 +12,15 @@ import java.util.Map;
 
 import javax.net.ssl.HttpsURLConnection;
 
-public class Request {
+import org.json.JSONObject;
+
+public class PlaceSearch {
 
 	private final URL url;
 	private final Map<String, String> queryValues;
 
-	public Request(String apiUrl, String query) throws MalformedURLException {
+	public PlaceSearch(String apiUrl, String query)
+			throws MalformedURLException {
 		url = new URL(apiUrl + query);
 		queryValues = parseQuery(query);
 	}
@@ -27,7 +30,7 @@ public class Request {
 	}
 
 	// TODO handle errors
-	public String makeRequest(PrintWriter out) throws IOException {
+	public JSONObject doSearch(PrintWriter out) throws IOException {
 		HttpURLConnection connection = (HttpsURLConnection) url
 				.openConnection();
 		BufferedReader in = new BufferedReader(new InputStreamReader(
@@ -40,7 +43,7 @@ public class Request {
 			response.append(line);
 		}
 
-		return response.toString();
+		return new JSONObject(response.toString());
 	}
 
 	private static Map<String, String> parseQuery(String query) {

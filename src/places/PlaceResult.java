@@ -5,8 +5,8 @@ import org.json.JSONObject;
 public class PlaceResult {
 
 	private final String placeId;
-	private final int latitude;
-	private final int longitude;
+	private final double latitude;
+	private final double longitude;
 
 	public PlaceResult(JSONObject result) {
 		placeId = parsePlaceId(result);
@@ -18,11 +18,11 @@ public class PlaceResult {
 		return placeId;
 	}
 
-	public int getLatitude() {
+	public double getLatitude() {
 		return latitude;
 	}
 
-	public int getLongitude() {
+	public double getLongitude() {
 		return longitude;
 	}
 
@@ -30,13 +30,13 @@ public class PlaceResult {
 		return result.getString("place_id");
 	}
 
-	private static int parseLatitude(JSONObject result) {
+	private static double parseLatitude(JSONObject result) {
 		return result.getJSONObject("geometry").getJSONObject("location")
-				.getInt("lat");
+				.getDouble("lat");
 	}
 
-	private static int parseLongitude(JSONObject result) {
+	private static double parseLongitude(JSONObject result) {
 		return result.getJSONObject("geometry").getJSONObject("location")
-				.getInt("lng");
+				.getDouble("lng");
 	}
 }

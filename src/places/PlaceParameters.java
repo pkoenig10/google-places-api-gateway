@@ -1,18 +1,16 @@
-package places.nearbySearch;
+package places;
 
 /**
  * Parameters for a Google Places API nearby search. See
  * https://developers.google.com/places/documentation/search for more
  * information.
  */
-public interface NearbySearchParameters {
+public interface PlaceParameters {
 
-	// Required parameters
+	public static final String QUERY = "query";
 	public static final String KEY = "key";
 	public static final String LOCATION = "location";
 	public static final String RADIUS = "radius";
-
-	// Optional parameters
 	public static final String KEYWORD = "keyword";
 	public static final String LANGUAGE = "language";
 	public static final String MINPRICE = "minprice";
