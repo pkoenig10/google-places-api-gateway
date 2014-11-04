@@ -12,12 +12,13 @@ import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import javax.naming.AuthenticationException;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -109,9 +110,6 @@ public class Server extends Thread {
 			} catch (IOException e) {
 				// TODO log errors
 				break;
-			} catch (AuthenticationException e) {
-				// TODO Auto-generated catch block
-				break;
 			} finally {
 				try {
 					if (clientSocket != null) {
@@ -136,7 +134,7 @@ public class Server extends Thread {
 
 		private final UUID sessionId;
 
-		public ClientHandler(Socket socket) throws AuthenticationException {
+		public ClientHandler(Socket socket) {
 			this.socket = socket;
 			this.sessionId = UUID.randomUUID();
 		}
@@ -157,7 +155,7 @@ public class Server extends Thread {
 						|| !request[0].equals("GET")
 						|| (!request[2].equals("HTTP/1.0") && !request[2]
 								.equals("HTTP/1.1"))) {
-					// TODO handle error
+					out.print(getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST));
 					return;
 				}
 
@@ -179,7 +177,7 @@ public class Server extends Thread {
 							requestUrl.getQuery()), out);
 
 				default:
-					// TODO handle this case
+					out.print(getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL));
 				}
 
 			} catch (IOException e) {
@@ -326,6 +324,105 @@ public class Server extends Thread {
 
 			return true;
 		}
+
+		/**
+		 * Executes the specified SQL query on the database of searches and
+		 * results.
+		 *
+		 * @param query
+		 *            the query
+		 *
+		 * @return A {@link JSONObject} containing the results of the query
+		 */
+		private JSONObject executeQuery(String query) {
+			Connection connection = null;
+			Statement statement = null;
+			ResultSet resultSet = null;
+
+			try {
+				// Open a connection to the database
+				connection = DriverManager.getConnection(dbUrl, dbUser,
+						dbPassword);
+
+				// Execute the query
+				statement = connection.createStatement();
+				resultSet = statement.executeQuery(query);
+
+				return getQueryResponse(resultSet);
+
+			} catch (SQLException e) {
+				return getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR);
+			} finally {
+				try {
+					if (resultSet != null) {
+						resultSet.close();
+					}
+					if (statement != null) {
+						statement.close();
+					}
+					if (connection != null) {
+						connection.close();
+					}
+				} catch (SQLException e) {
+					// Do nothing because we are exiting
+				}
+			}
+		}
+	}
+
+	/**
+	 * Convert a {@link ResultSet} from an SQL query to a {@link JSONObject} .
+	 *
+	 * @param resultSet
+	 *            the result set returned from the query
+	 *
+	 * @return A JSONObject containing the results of the query
+	 */
+	private static JSONObject getQueryResponse(ResultSet resultSet) {
+		try {
+			JSONObject jsonResponse = new JSONObject();
+			JSONArray jsonResults = new JSONArray();
+			ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
+
+			while (resultSet.next()) {
+				JSONObject jsonResult = new JSONObject();
+				int cols = resultSetMetaData.getColumnCount();
+
+				// TODO check order
+				for (int i = cols; i > 0; i--) {
+					jsonResult.put(resultSetMetaData.getColumnLabel(i)
+							.toLowerCase(), resultSet.getObject(i));
+				}
+
+				jsonResults.put(jsonResult);
+			}
+
+			jsonResponse.put(RESPONSE_STATUS, RESPONSE_STATUS_OK);
+			jsonResponse.put(RESPONSE_RESULTS, jsonResults);
+
+			return jsonResponse;
+		} catch (SQLException e) {
+			return getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR);
+		}
+	}
+
+	/**
+	 * Returns a {@link JSONObject} with empty results and the specified error
+	 * status.
+	 *
+	 * @param status
+	 *            the error status
+	 *
+	 * @return A {@link JSONObject} with empty results and the specified error
+	 *         status
+	 */
+	private static JSONObject getQueryErrorResponse(String status) {
+		JSONObject jsonResponse = new JSONObject();
+
+		jsonResponse.put(RESPONSE_STATUS, status);
+		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
+
+		return jsonResponse;
 	}
 
 	public static void main(String[] args) {
