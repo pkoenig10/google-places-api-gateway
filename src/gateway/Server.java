@@ -499,7 +499,7 @@ public class Server extends Thread {
 		 */
 		private boolean validateUser(String username, String password) {
 			// Return false if anonymous users are not permitted
-			if (username == null && !ALLOW_ANON_USERS) {
+			if (username == null && !allowAnonUsers()) {
 				return false;
 			}
 
@@ -549,6 +549,10 @@ public class Server extends Thread {
 
 			return false;
 		}
+	}
+
+	private static boolean allowAnonUsers() {
+		return ALLOW_ANON_USERS;
 	}
 
 	/**
