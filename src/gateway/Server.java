@@ -9,6 +9,9 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -16,9 +19,12 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import javax.naming.AuthenticationException;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -110,6 +116,9 @@ public class Server extends Thread {
 			} catch (IOException e) {
 				// TODO log errors
 				break;
+			} catch (AuthenticationException e) {
+				// TODO Auto-generated catch block
+				break;
 			} finally {
 				try {
 					if (clientSocket != null) {
@@ -132,11 +141,22 @@ public class Server extends Thread {
 
 		private final Socket socket;
 
+		private final String username;
+
 		private final UUID sessionId;
 
-		public ClientHandler(Socket socket) {
+		public ClientHandler(Socket socket, String username, String password)
+				throws AuthenticationException {
 			this.socket = socket;
+			if (username != null && !validateUser(username, password)) {
+				throw new AuthenticationException("Invalid credentials");
+			}
+			this.username = username;
 			this.sessionId = UUID.randomUUID();
+		}
+
+		public ClientHandler(Socket socket) throws AuthenticationException {
+			this(socket, null, null);
 		}
 
 		@Override
@@ -240,7 +260,7 @@ public class Server extends Thread {
 				// Execute the update
 				statement = connection.prepareStatement(INSERT_SEARCH);
 				statement.setObject(1, sessionId);
-				statement.setString(2, null); // Usernames not yet implemented
+				statement.setString(2, username);
 				statement.setString(3, search.getParameter(QUERY));
 				statement.setString(4, search.getParameter(LOCATION));
 				statement.setString(5, search.getParameter(RADIUS));
@@ -299,8 +319,7 @@ public class Server extends Thread {
 					PlaceResult result = new PlaceResult(
 							results.getJSONObject(i));
 					statement.setObject(1, sessionId);
-					statement.setString(2, null); // Usernames not yet
-													// implemented
+					statement.setString(2, username);
 					statement.setString(3, result.getPlaceId());
 					statement.setDouble(4, result.getLatitude());
 					statement.setDouble(5, result.getLongitude());
@@ -368,6 +387,175 @@ public class Server extends Thread {
 				}
 			}
 		}
+
+		/**
+		 * Adds a user with the specified username and password as an authorized
+		 * user.
+		 *
+		 * @param username
+		 *            the username
+		 *
+		 * @param password
+		 *            the password
+		 *
+		 * @return True if the user was successfully added, false otherwise
+		 */
+		private boolean addUser(String username, String password) {
+			Connection connection = null;
+			PreparedStatement statement = null;
+
+			try {
+				// Get a new salt and hash the password
+				byte[] salt = getSalt();
+				byte[] hashedPassword = hashPassword(password, salt);
+
+				// Open a connection to the database
+				connection = DriverManager.getConnection(dbUrl, dbUser,
+						dbPassword);
+
+				// Execute the update to add the user
+				statement = connection.prepareStatement(ADD_USER);
+				statement.setString(1, username);
+				statement.setString(2, encode(salt));
+				statement.setString(3, encode(hashedPassword));
+				statement.executeUpdate();
+
+			} catch (SQLException | NoSuchAlgorithmException e) {
+				return false;
+			} finally {
+				try {
+					if (statement != null) {
+						statement.close();
+					}
+					if (connection != null) {
+						connection.close();
+					}
+				} catch (SQLException e) {
+					// Do nothing because we are exiting
+				}
+			}
+
+			return true;
+		}
+
+		/**
+		 * Validates a user to allow access to the gateway.
+		 *
+		 * @param username
+		 *            the username
+		 *
+		 * @param password
+		 *            the password
+		 *
+		 * @return True if the credentials are valid, false otherwise
+		 */
+		private boolean validateUser(String username, String password) {
+			Connection connection = null;
+			PreparedStatement statement = null;
+			ResultSet result = null;
+
+			try {
+				// Open a connection to the database
+				connection = DriverManager.getConnection(dbUrl, dbUser,
+						dbPassword);
+
+				// Execute the query to get the stored salt and password
+				statement = connection.prepareStatement(VALIDATE_USER);
+				statement.setString(1, username);
+				result = statement.executeQuery();
+
+				// Check that the stored hashed password matches the hash of the
+				// given password
+				if (result.next()) {
+					byte[] salt = decode(result.getString(SALT));
+					String encodedHashedPassword = result.getString(PASSHASH);
+
+					if (encode(hashPassword(password, salt)).equals(
+							encodedHashedPassword)) {
+						return true;
+					}
+				}
+
+			} catch (SQLException | NoSuchAlgorithmException e) {
+				return false;
+			} finally {
+				try {
+					if (result != null) {
+						result.close();
+					}
+					if (statement != null) {
+						statement.close();
+					}
+					if (connection != null) {
+						connection.close();
+					}
+				} catch (SQLException e) {
+					// Do nothing because we are exiting
+				}
+			}
+
+			return false;
+		}
+	}
+
+	/**
+	 * Hashes the specified password using SHA-256 with the specified salt.
+	 *
+	 * @param password
+	 *            the password
+	 *
+	 * @param salt
+	 *            the salt
+	 *
+	 * @return The hashed password
+	 *
+	 * @exception NoSuchAlgorithmException
+	 *                if the hashing algorithm is not supported
+	 */
+	private static byte[] hashPassword(String password, byte[] salt)
+			throws NoSuchAlgorithmException {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		digest.reset();
+		digest.update(salt);
+		return digest.digest(password.getBytes());
+	}
+
+	/**
+	 * Generates a new random 32 byte salt.
+	 *
+	 * @return The salt
+	 */
+	private static byte[] getSalt() {
+		SecureRandom random = new SecureRandom();
+		byte[] salt = new byte[32];
+		random.nextBytes(salt);
+		return salt;
+	}
+
+	/**
+	 * Encodes the specified byte array into a String using the {@link Base64}
+	 * encoding scheme.
+	 *
+	 * @param src
+	 *            the byte array to encode
+	 *
+	 * @return A String containing the resulting Base64 encoded characters
+	 */
+	private static String encode(byte[] src) {
+		return Base64.getEncoder().encodeToString(src);
+	}
+
+	/**
+	 * Decodes a String into a byte array using the {@link Base64} encoding
+	 * scheme.
+	 *
+	 * @param src
+	 *            the string to decode
+	 *
+	 * @return A byte array containing the decoded bytes.
+	 */
+	private static byte[] decode(String src) {
+		return Base64.getDecoder().decode(src);
 	}
 
 	/**
