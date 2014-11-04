@@ -83,6 +83,9 @@ public class Server extends Thread {
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
 
+	// If the gateway allows users who do not provide credentials
+	private static final boolean ALLOW_ANON_USERS = true;
+
 	// The port number
 	private final int port;
 
@@ -153,7 +156,7 @@ public class Server extends Thread {
 		public ClientHandler(Socket socket, String username, String password)
 				throws AuthenticationException {
 			this.socket = socket;
-			if (username != null && !validateUser(username, password)) {
+			if (!validateUser(username, password)) {
 				throw new AuthenticationException("Invalid credentials");
 			}
 			this.username = username;
@@ -495,6 +498,11 @@ public class Server extends Thread {
 		 * @return True if the credentials are valid, false otherwise
 		 */
 		private boolean validateUser(String username, String password) {
+			// Return false if anonymous users are not permitted
+			if (username == null && !ALLOW_ANON_USERS) {
+				return false;
+			}
+
 			Connection connection = null;
 			PreparedStatement statement = null;
 			ResultSet result = null;
