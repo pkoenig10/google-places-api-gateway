@@ -2,7 +2,10 @@ package gateway;
 
 import static places.PlaceConstants.*;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -32,6 +35,10 @@ import org.json.JSONObject;
 import places.PlaceResult;
 import places.PlaceSearch;
 
+/**
+ * A gateway server for the Google Place Search API that supports user
+ * authentication and logs and analyzes search queries and results.
+ */
 public class Server extends Thread {
 
 	// URL paths used by the client to interact with the gateway
@@ -66,6 +73,12 @@ public class Server extends Thread {
 	private static final String RESPONSE_STATUS_GATEWAY_INVALID_URL = "GATEWAY_INVALID_URL";
 	private static final String RESPONSE_STATUS_GATEWAY_JSON_ERROR = "GATEWAY_JSON_ERROR";
 	private static final String RESPONSE_STATUS_GATEWAY_SQL_ERROR = "GATEWAY_SQL_ERROR";
+
+	// Path to the favicon image file
+	private static final String FAVICON_PATH = "res/favicon.ico";
+
+	// Buffer size for writing data
+	private static final int BUF_SIZE = 8192;
 
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
@@ -107,26 +120,17 @@ public class Server extends Thread {
 		// and immediately begin listening for other incoming client
 		// connections.
 		while (true) {
-			Socket clientSocket = null;
-
 			try {
-				clientSocket = serverSocket.accept();
+				Socket clientSocket = serverSocket.accept();
 				executor.execute(new ClientHandler(clientSocket));
 
 			} catch (IOException e) {
 				// TODO log errors
+				e.printStackTrace();
 				break;
 			} catch (AuthenticationException e) {
 				// TODO Auto-generated catch block
-				break;
-			} finally {
-				try {
-					if (clientSocket != null) {
-						clientSocket.close();
-					}
-				} catch (IOException e) {
-					// Ignore because we're about to exit anyway.
-				}
+				e.printStackTrace();
 			}
 		}
 
@@ -137,6 +141,7 @@ public class Server extends Thread {
 		}
 	}
 
+	// TODO check all throws declarations
 	class ClientHandler implements Runnable {
 
 		private final Socket socket;
@@ -196,12 +201,16 @@ public class Server extends Thread {
 					doPlaceSearch(new PlaceSearch(API_PATH_RADAR_SEARCH,
 							requestUrl.getQuery()), out);
 
+				case GATEWAY_PATH_FAVICON:
+					doFavicon();
+
 				default:
 					out.print(getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL));
 				}
 
 			} catch (IOException e) {
 				// TODO log errors
+				e.printStackTrace();
 				return;
 			} finally {
 				try {
@@ -215,7 +224,7 @@ public class Server extends Thread {
 		}
 
 		/**
-		 * Execute a Google Place Search API query and forwards the response to
+		 * Executes a Google Place Search API query and forwards the response to
 		 * the client.
 		 *
 		 * @param placesSearch
@@ -237,6 +246,42 @@ public class Server extends Thread {
 					RESPONSE_STATUS_OK)) {
 				writeSearch(placesSearch);
 				writeResults(jsonResponse.getJSONArray(RESPONSE_RESULTS));
+			}
+		}
+
+		/**
+		 * Writes the favicon to the client.
+		 */
+		private void doFavicon() {
+			FileInputStream favicon = null;
+
+			try {
+				// Get the output stream for the socket
+				BufferedOutputStream out = new BufferedOutputStream(
+						socket.getOutputStream());
+
+				// Get the input stream for the favicon image file
+				favicon = new FileInputStream(new File(FAVICON_PATH));
+
+				// Write the favicon to the client
+				byte[] buf = new byte[BUF_SIZE];
+				int len;
+				while ((len = favicon.read(buf, 0, buf.length)) > 0) {
+					out.write(buf, 0, len);
+				}
+				out.flush();
+
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} finally {
+				try {
+					if (favicon != null) {
+						favicon.close();
+					}
+				} catch (IOException e) {
+					// Ignore because we're about to exit anyway.
+				}
 			}
 		}
 
@@ -614,7 +659,9 @@ public class Server extends Thread {
 	}
 
 	public static void main(String[] args) {
-		Server server = new Server(12345);
+		Server server = new Server(12345,
+				"jdbc:postgresql://71.199.115.219/googleplaces",
+				"googleplaces", "googleplaces");
 		server.start();
 	}
 }
