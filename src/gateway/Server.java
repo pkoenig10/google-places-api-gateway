@@ -1,7 +1,5 @@
 package gateway;
 
-import static places.PlaceConstants.*;
-
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -64,6 +62,25 @@ public class Server extends Thread {
 	// Columns in the user table
 	private static final String SALT = "salt";
 	private static final String PASSHASH = "passhash";
+
+	// Parameters for a Google Place Search API query
+	public static final String QUERY = "query";
+	public static final String LOCATION = "location";
+	public static final String RADIUS = "radius";
+	public static final String KEYWORD = "keyword";
+	public static final String LANGUAGE = "language";
+	public static final String MINPRICE = "minprice";
+	public static final String MAXPRICE = "maxprice";
+	public static final String NAME = "name";
+	public static final String OPENNOW = "opennow";
+	public static final String RANKBY = "rankby";
+	public static final String TYPES = "types";
+	public static final String PAGETOKEN = "pagetoken";
+	public static final String ZAGATSELECTED = "zagatselected";
+
+	// Parameters for a add user request
+	public static final String USERNAME = "username";
+	public static final String PASSWORD = "password";
 
 	// JSON response fields and value
 	private static final String RESPONSE_RESULTS = "results";
@@ -145,6 +162,9 @@ public class Server extends Thread {
 	}
 
 	// TODO check all throws declarations
+	// TODO handle no db specified
+	// TODO add timestamp to db
+	// TODO move username/password
 	class ClientHandler implements Runnable {
 
 		private final Socket socket;
@@ -178,12 +198,13 @@ public class Server extends Thread {
 
 				// Parse the client request and ensure it is a valid HTTP
 				// request
+				// TODO fix null pointers here
 				String[] request = in.readLine().split(" ");
 				if (request.length != 3
 						|| !request[0].equals("GET")
 						|| (!request[2].equals("HTTP/1.0") && !request[2]
 								.equals("HTTP/1.1"))) {
-					out.print(getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST));
+					out.print(getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST));
 					return;
 				}
 
@@ -195,20 +216,29 @@ public class Server extends Thread {
 				case GATEWAY_PATH_NEARBY_SEARCH:
 					doPlaceSearch(new PlaceSearch(API_PATH_NEARBY_SEARCH,
 							requestUrl.getQuery()), out);
+					break;
 
 				case GATEWAY_PATH_TEXT_SEARCH:
 					doPlaceSearch(new PlaceSearch(API_PATH_TEXT_SEARCH,
 							requestUrl.getQuery()), out);
+					break;
 
 				case GATEWAY_PATH_RADAR_SEARCH:
 					doPlaceSearch(new PlaceSearch(API_PATH_RADAR_SEARCH,
 							requestUrl.getQuery()), out);
+					break;
+
+				case GATEWAY_PATH_ADD_USER:
+					addUser(new Request(requestUrl.getQuery()));
+					break;
 
 				case GATEWAY_PATH_FAVICON:
 					doFavicon();
+					break;
 
 				default:
-					out.print(getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL));
+					out.print(getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL));
+					break;
 				}
 
 			} catch (IOException e) {
@@ -418,7 +448,7 @@ public class Server extends Thread {
 				return getQueryResponse(resultSet);
 
 			} catch (SQLException e) {
-				return getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR);
+				return getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR);
 			} finally {
 				try {
 					if (resultSet != null) {
@@ -448,14 +478,25 @@ public class Server extends Thread {
 		 *
 		 * @return True if the user was successfully added, false otherwise
 		 */
-		private boolean addUser(String username, String password) {
+
+		/**
+		 * Adds a user with the username and password specified in the request
+		 * as an authorized user.
+		 *
+		 * @param request
+		 *            the request containing the username and password
+		 *
+		 * @return True if the user was successfully added, false otherwise
+		 */
+		private boolean addUser(Request request) {
 			Connection connection = null;
 			PreparedStatement statement = null;
 
 			try {
 				// Get a new salt and hash the password
 				byte[] salt = getSalt();
-				byte[] hashedPassword = hashPassword(password, salt);
+				byte[] hashedPassword = hashPassword(
+						request.getParameter(PASSWORD), salt);
 
 				// Open a connection to the database
 				connection = DriverManager.getConnection(dbUrl, dbUser,
@@ -463,7 +504,7 @@ public class Server extends Thread {
 
 				// Execute the update to add the user
 				statement = connection.prepareStatement(ADD_USER);
-				statement.setString(1, username);
+				statement.setString(1, request.getParameter(USERNAME));
 				statement.setString(2, encode(salt));
 				statement.setString(3, encode(hashedPassword));
 				statement.executeUpdate();
@@ -499,8 +540,8 @@ public class Server extends Thread {
 		 */
 		private boolean validateUser(String username, String password) {
 			// Return false if anonymous users are not permitted
-			if (username == null && !allowAnonUsers()) {
-				return false;
+			if (username == null) {
+				return allowAnonUsers();
 			}
 
 			Connection connection = null;
@@ -647,21 +688,19 @@ public class Server extends Thread {
 
 			return jsonResponse;
 		} catch (SQLException e) {
-			return getQueryErrorResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR);
+			return getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR);
 		}
 	}
 
 	/**
-	 * Returns a {@link JSONObject} with empty results and the specified error
-	 * status.
+	 * Returns a {@link JSONObject} with empty results and the specified status.
 	 *
 	 * @param status
-	 *            the error status
+	 *            the status
 	 *
-	 * @return A {@link JSONObject} with empty results and the specified error
-	 *         status
+	 * @return A {@link JSONObject} with empty results and the specified status
 	 */
-	private static JSONObject getQueryErrorResponse(String status) {
+	private static JSONObject getEmptyQueryResponse(String status) {
 		JSONObject jsonResponse = new JSONObject();
 
 		jsonResponse.put(RESPONSE_STATUS, status);

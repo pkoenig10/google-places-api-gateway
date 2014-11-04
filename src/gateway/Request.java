@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * A client request.
  */
-public abstract class Request {
+public class Request {
 
 	private final Map<String, String> parameters;
 
