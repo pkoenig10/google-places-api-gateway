@@ -1,60 +1,91 @@
 package places;
 
+import gateway.Request;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
 
-import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
-public class PlaceSearch {
+/**
+ * A Google Place Search API query.
+ */
+public class PlaceSearch extends Request {
 
-	private final URL url;
-	private final Map<String, String> queryValues;
+	private static final String API_HOSTNAME = "maps.googleapis.com";
 
-	public PlaceSearch(String apiUrl, String query)
-			throws MalformedURLException {
-		url = new URL(apiUrl + query);
-		queryValues = parseQuery(query);
+	private final String apiPath;
+
+	public PlaceSearch(String apiPath, String query) {
+		super(query);
+		this.apiPath = apiPath + query;
 	}
 
-	public String getQueryValue(String parameter) {
-		return queryValues.get(parameter);
-	}
+	/**
+	 * Execute a Google Place Search API query and forward the response to the
+	 * client.
+	 *
+	 * @param clientout
+	 *            a {@link PrintWriter} to the client output stream
+	 *
+	 * @return A {@link JSONArray} containing the results of the query
+	 *
+	 * @throws IOException
+	 *             if the query could not be completed successfully
+	 */
+	public JSONObject doSearch(PrintWriter clientOut) throws IOException {
+		SSLSocket socket = null;
 
-	// TODO handle errors
-	public JSONObject doSearch(PrintWriter out) throws IOException {
-		HttpURLConnection connection = (HttpsURLConnection) url
-				.openConnection();
-		BufferedReader in = new BufferedReader(new InputStreamReader(
-				connection.getInputStream()));
+		try {
+			// Open a connection to the API server
+			socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket(
+					API_HOSTNAME, 443);
 
-		StringBuilder response = new StringBuilder();
-		String line;
-		while ((line = in.readLine()) != null) {
-			out.println(line);
-			response.append(line);
-		}
+			// Send the API HTTP request
+			PrintWriter apiOut = new PrintWriter(new OutputStreamWriter(
+					socket.getOutputStream()), true);
+			apiOut.println("GET " + apiPath + " HTTP/1.0");
+			apiOut.println();
 
-		return new JSONObject(response.toString());
-	}
+			// Read and forward the response
+			BufferedReader in = new BufferedReader(new InputStreamReader(
+					socket.getInputStream()));
+			StringBuilder response = new StringBuilder();
+			String line;
 
-	private static Map<String, String> parseQuery(String query) {
-		Map<String, String> queryValues = new HashMap<String, String>();
-		for (String item : query.split("&")) {
-			String[] parameterValue = item.split("=");
-			if (parameterValue.length != 2) {
-				// TODO handle error
+			// Read and forward the HTTP response headers
+			while ((line = in.readLine()) != null) {
+				clientOut.println(line);
+				if (line.isEmpty()) {
+					break;
+				}
 			}
-			queryValues.put(parameterValue[0], parameterValue[1]);
+
+			// Read and forward the HTTP response body
+			while ((line = in.readLine()) != null) {
+				clientOut.println(line);
+				response.append(line);
+			}
+
+			return new JSONObject(response.toString());
+
+		} catch (IOException e) {
+			throw e;
+		} finally {
+			try {
+				if (socket != null) {
+					socket.close();
+				}
+			} catch (IOException e) {
+				// Ignore because we're about to exit anyway.
+			}
 		}
-		return queryValues;
 	}
 }

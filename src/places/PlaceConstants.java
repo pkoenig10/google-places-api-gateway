@@ -1,14 +1,14 @@
 package places;
 
 /**
- * Parameters for a Google Places API nearby search. See
+ * Constants used by the Google Place Search API. See
  * https://developers.google.com/places/documentation/search for more
  * information.
  */
-public interface PlaceParameters {
+public interface PlaceConstants {
 
+	// Parameters for a Google Place Search API query
 	public static final String QUERY = "query";
-	public static final String KEY = "key";
 	public static final String LOCATION = "location";
 	public static final String RADIUS = "radius";
 	public static final String KEYWORD = "keyword";
