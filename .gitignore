@@ -1,0 +1,11 @@
+# Java class files
+*.class
+
+# generated files
+bin/
+
+# hidden folders
+.*/
+
+# properties files
+*.properties

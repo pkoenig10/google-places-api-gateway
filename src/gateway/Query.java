@@ -12,44 +12,64 @@ public class Query {
 	private final String querySuffix;
 	private final List<String> parameters;
 
-	public Query(String queryPrefix, String querySuffix) {
+	public Query(Request request, String queryPrefix, String querySuffix) {
 		this.query = new StringBuilder(queryPrefix);
 		this.querySuffix = querySuffix;
-		this.parameters = new ArrayList<String>();
+		this.parameters = parseRequest(request, queryPrefix);
 	}
 
 	/**
-	 * Add the specified parameter with the specified value to the query.
+	 * Gets the value of the specified query parameter.
 	 *
-	 * @param parameter
-	 *            the parameter
+	 * @param field
+	 *            the query field
 	 *
-	 * @param value
-	 *            the value
-	 */
-	public void addParameter(String parameter, String value) {
-		if (parameters.size() == 0) {
-			query.append(" WHERE");
-		}
-		query.append(" " + parameter + "=?");
-		parameters.add(value);
-	}
-
-	/**
-	 * Get the query.
-	 *
-	 * @return The query.
+	 * @return The value of the specified query parameter
 	 */
 	public String getQuery() {
 		return query.toString() + querySuffix;
 	}
 
 	/**
-	 * Get the query parameter list.
+	 * Gets the value of the specified query parameter.
 	 *
-	 * @return The query parameter list
+	 * @param parameter
+	 *            the query parameter
+	 *
+	 * @return The value of the specified query parameter
 	 */
-	public List<String> getParameters() {
+	public String get(int index) {
+		return parameters.get(index);
+	}
+
+	/**
+	 * Gets the number of parameters in the query.
+	 *
+	 * @return The number of parameters in the query
+	 */
+	public int size() {
+		return parameters.size();
+	}
+
+	/**
+	 * Puts all of the API query parameters in a map.
+	 *
+	 * @param query
+	 *            the URL query
+	 *
+	 * @return A mapping of query parameters to their values.
+	 */
+	private List<String> parseRequest(Request request, String queryPrefix) {
+		List<String> parameters = new ArrayList<String>();
+
+		if (request.size() > 0) {
+			query.append(" WHERE");
+		}
+		for (String parameter : request.getParameters().keySet()) {
+			query.append(" " + parameter + "=?");
+			parameters.add(request.get(parameter));
+		}
+
 		return parameters;
 	}
 }
