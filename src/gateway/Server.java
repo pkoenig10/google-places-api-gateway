@@ -1,6 +1,7 @@
 package gateway;
 
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -19,6 +20,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Base64;
 import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -771,7 +773,25 @@ public class Server extends Thread {
 	}
 
 	public static void main(String[] args) {
-		Server server = new Server(12345);
+		Properties properties = new Properties();
+		String dbUrl = null;
+		String dbUsername = null;
+		String dbPassword = null;
+
+		try {
+			properties.load(new FileInputStream(PROPERTIES));
+			// Read database information from properties file
+			dbUrl = properties.getProperty(DB_URL);
+			dbUsername = properties.getProperty(DB_USERNAME);
+			dbPassword = properties.getProperty(DB_PASSWORD);
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		// Start gateway server
+		Server server = new Server(8080, dbUrl, dbUsername, dbPassword);
 		server.start();
 	}
 }
