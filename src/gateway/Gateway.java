@@ -274,8 +274,11 @@ public class Gateway extends Thread {
 		 * Executes a Google Place Search API query and forwards the response to
 		 * the client.
 		 *
-		 * @param placesSearch
-		 *            the search query
+		 * @param request
+		 *            the client request
+		 *
+		 * @param apiPath
+		 *            the path of the Google Place Search API
 		 *
 		 * @param out
 		 *            the client output stream
@@ -360,7 +363,7 @@ public class Gateway extends Thread {
 		 * Writes a search to the database.
 		 *
 		 * @param request
-		 *            the performed search
+		 *            the client request
 		 *
 		 * @return True if the search was written successfully, false otherwise
 		 */
@@ -417,6 +420,9 @@ public class Gateway extends Thread {
 		/**
 		 * Writes the results of a search to the database.
 		 *
+		 * @param username
+		 *            the username of the client
+		 *
 		 * @param results
 		 *            a {@link JSONArray} containing the results of the query
 		 *
@@ -472,8 +478,17 @@ public class Gateway extends Thread {
 		 * Executes the specified SQL query on the database of searches and
 		 * results.
 		 *
-		 * @param query
-		 *            the query
+		 * @param request
+		 *            the client request
+		 *
+		 * @param queryPrefix
+		 *            the prefix of the database query
+		 *
+		 * @param querySuffix
+		 *            the suffix of the database query
+		 *
+		 * @param out
+		 *            the client output stream
 		 *
 		 * @return True if the query was successfully added, false otherwise
 		 */
@@ -535,7 +550,10 @@ public class Gateway extends Thread {
 		 * as an authorized user.
 		 *
 		 * @param request
-		 *            the request containing the username and password
+		 *            the client request containing the username and password
+		 *
+		 * @param out
+		 *            the client output stream
 		 *
 		 * @return True if the user was successfully added, false otherwise
 		 */
@@ -730,7 +748,8 @@ public class Gateway extends Thread {
 	 * @param resultSet
 	 *            the result set returned from the query
 	 *
-	 * @return A JSONObject containing the results of the query
+	 * @param out
+	 *            the client output stream
 	 */
 	private static void writeQueryResponse(ResultSet resultSet, PrintWriter out) {
 		try {
@@ -766,7 +785,8 @@ public class Gateway extends Thread {
 	 * @param status
 	 *            the status
 	 *
-	 * @return A {@link JSONObject} with empty results and the specified status
+	 * @param out
+	 *            the client output stream
 	 */
 	private static void writeEmptyResponse(String status, PrintWriter out) {
 		JSONObject jsonResponse = new JSONObject();

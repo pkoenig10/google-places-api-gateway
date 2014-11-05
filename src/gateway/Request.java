@@ -54,9 +54,6 @@ public class Request {
 	/**
 	 * Gets the mapping of query parameters to their values.
 	 *
-	 * @param parameter
-	 *            the query parameter
-	 *
 	 * @return The mapping of query parameters to their values.
 	 */
 	public Map<String, String> getParameters() {

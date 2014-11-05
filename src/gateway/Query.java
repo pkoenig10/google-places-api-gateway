@@ -19,22 +19,19 @@ public class Query {
 	}
 
 	/**
-	 * Gets the value of the specified query parameter.
+	 * Gets the database query.
 	 *
-	 * @param field
-	 *            the query field
-	 *
-	 * @return The value of the specified query parameter
+	 * @return The database query
 	 */
 	public String getQuery() {
 		return query.toString() + querySuffix;
 	}
 
 	/**
-	 * Gets the value of the specified query parameter.
+	 * Gets the value of the query parameter at the specified index.
 	 *
-	 * @param parameter
-	 *            the query parameter
+	 * @param index
+	 *            the index of the query parameter
 	 *
 	 * @return The value of the specified query parameter
 	 */
@@ -54,8 +51,8 @@ public class Query {
 	/**
 	 * Puts all of the API query parameters in a map.
 	 *
-	 * @param query
-	 *            the URL query
+	 * @param request
+	 *            the client request
 	 *
 	 * @return A mapping of query parameters to their values.
 	 */
