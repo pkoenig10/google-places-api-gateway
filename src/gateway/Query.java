@@ -15,7 +15,7 @@ public class Query {
 	public Query(Request request, String queryPrefix, String querySuffix) {
 		this.query = new StringBuilder(queryPrefix);
 		this.querySuffix = querySuffix;
-		this.parameters = parseRequest(request, queryPrefix);
+		this.parameters = parseRequest(request);
 	}
 
 	/**
@@ -59,7 +59,7 @@ public class Query {
 	 *
 	 * @return A mapping of query parameters to their values.
 	 */
-	private List<String> parseRequest(Request request, String queryPrefix) {
+	private List<String> parseRequest(Request request) {
 		List<String> parameters = new ArrayList<String>();
 
 		if (request.size() > 0) {
