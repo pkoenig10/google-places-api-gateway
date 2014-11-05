@@ -1,15 +1,12 @@
 package gateway;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -19,19 +16,19 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.naming.AuthenticationException;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-
-import places.PlaceResult;
-import places.PlaceSearch;
 
 /**
  * A gateway server for the Google Place Search API that supports user
@@ -39,48 +36,74 @@ import places.PlaceSearch;
  */
 public class Server extends Thread {
 
+	// Properties file with database information
+	private static final String PROPERTIES = "gateway.properties";
+	private static final String DB_URL = "dbUrl";
+	private static final String DB_USERNAME = "dbUsername";
+	private static final String DB_PASSWORD = "dbPassword";
+
 	// URL paths used by the client to interact with the gateway
 	private static final String GATEWAY_PATH_NEARBY_SEARCH = "/google-places-api-gateway/nearbysearch";
 	private static final String GATEWAY_PATH_TEXT_SEARCH = "/google-places-api-gateway/textsearch";
 	private static final String GATEWAY_PATH_RADAR_SEARCH = "/google-places-api-gateway/radarsearch";
 	private static final String GATEWAY_PATH_ADD_USER = "/google-places-api-gateway/adduser";
-	private static final String GATEWAY_PATH_QUERY = "/google-places-api-gateway/query";
-	private static final String GATEWAY_PATH_FAVICON = "/favicon.ico";
+	private static final String GATEWAY_PATH_SEARCH_QUERY = "/google-places-api-gateway/searchquery";
+	private static final String GATEWAY_PATH_RESULT_QUERY = "/google-places-api-gateway/resultquery";
 
-	// URLs used by the gateway to interact with the API
-	private static final String API_PATH_NEARBY_SEARCH = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?";
-	private static final String API_PATH_TEXT_SEARCH = "https://maps.googleapis.com/maps/api/place/textsearch/json?";
-	private static final String API_PATH_RADAR_SEARCH = "https://maps.googleapis.com/maps/api/place/radarsearch/json?";
+	// URL hostname and paths used by the gateway to interact with the API
+	private static final String API_HOSTNAME = "maps.googleapis.com";
+	private static final String API_PATH_NEARBY_SEARCH = "/maps/api/place/nearbysearch/json?";
+	private static final String API_PATH_TEXT_SEARCH = "/maps/api/place/textsearch/json?";
+	private static final String API_PATH_RADAR_SEARCH = "/maps/api/place/radarsearch/json?";
 
 	// SQL statements for updating and querying the database
-	private static final String INSERT_SEARCH = "INSERT INTO searches (session_id, username, query, location, radius, keyword, language, "
-			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
-	private static final String INSERT_RESULT = "INSERT INTO results (session_id, username, place_id, lat, lng) VALUES (?, ?, ?, ?, ?);";
+	// TODO add order by most recent
+	private static final String INSERT_SEARCH = "INSERT INTO searches (sessionid, timestamp, username, query, location, radius, keyword, language, "
+			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+	private static final String INSERT_RESULT = "INSERT INTO results (sessionid, timestamp, username, placeid, lat, lng) VALUES (?, ?, ?, ?, ?, ?);";
 	private static final String ADD_USER = "INSERT INTO users (username, salt, passhash) VALUES (?, ?, ?);";
 	private static final String VALIDATE_USER = "SELECT salt, passhash FROM users WHERE username = ? LIMIT 1;";
+	private static final String SEARCH_QUERY_PREFIX = "SELECT sessionid, timestamp, username, query, location, radius, keyword, language, "
+			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected FROM SEARCHES WHERE";
+	private static final String RESULT_QUERY_PREFIX = "SELECT sessionid, timestamp, username, placeid, lat, lng FROM RESULTS";
+	private static final String QUERY_SUFFIX = " ORDER BY timestamp DESC LIMIT 500;";
 
-	// Columns in the user table
+	// URL query parameters for the gateway
+	private static final String MY_USERNAME = "myusername";
+	private static final String MY_PASSWORD = "mypassword";
+	private static final String ADD_USERNAME = "addusername";
+	private static final String ADD_PASSWORD = "addpassword";
+
+	// URL query parameters for the Google Place Search API
+	private static final String QUERY = "query";
+	private static final String LOCATION = "location";
+	private static final String RADIUS = "radius";
+	private static final String KEYWORD = "keyword";
+	private static final String LANGUAGE = "language";
+	private static final String MINPRICE = "minprice";
+	private static final String MAXPRICE = "maxprice";
+	private static final String NAME = "name";
+	private static final String OPENNOW = "opennow";
+	private static final String RANKBY = "rankby";
+	private static final String TYPES = "types";
+	private static final String PAGETOKEN = "pagetoken";
+	private static final String ZAGATSELECTED = "zagatselected";
+
+	// Database fields
+	private static final String SESSION_ID = "sessionid";
+	private static final String USERNAME = "username";
+	private static final String TIMESTAMP = "timestamp";
+	private static final String PLACE_ID = "placeid";
 	private static final String SALT = "salt";
 	private static final String PASSHASH = "passhash";
 
-	// Parameters for a Google Place Search API query
-	public static final String QUERY = "query";
-	public static final String LOCATION = "location";
-	public static final String RADIUS = "radius";
-	public static final String KEYWORD = "keyword";
-	public static final String LANGUAGE = "language";
-	public static final String MINPRICE = "minprice";
-	public static final String MAXPRICE = "maxprice";
-	public static final String NAME = "name";
-	public static final String OPENNOW = "opennow";
-	public static final String RANKBY = "rankby";
-	public static final String TYPES = "types";
-	public static final String PAGETOKEN = "pagetoken";
-	public static final String ZAGATSELECTED = "zagatselected";
-
-	// Parameters for a add user request
-	public static final String USERNAME = "username";
-	public static final String PASSWORD = "password";
+	// All valid parameters for database queries
+	private static final String[] SEARCH_QUERY_PARAMETERS = { SESSION_ID,
+			TIMESTAMP, USERNAME, QUERY, LOCATION, RADIUS, KEYWORD, LANGUAGE,
+			MINPRICE, MAXPRICE, NAME, OPENNOW, RANKBY, TYPES, PAGETOKEN,
+			ZAGATSELECTED };
+	private static final String[] RESULT_QUERY_PARAMETERS = { SESSION_ID,
+			TIMESTAMP, USERNAME, PLACE_ID };
 
 	// JSON response fields and value
 	private static final String RESPONSE_RESULTS = "results";
@@ -91,22 +114,14 @@ public class Server extends Thread {
 	private static final String RESPONSE_STATUS_GATEWAY_JSON_ERROR = "GATEWAY_JSON_ERROR";
 	private static final String RESPONSE_STATUS_GATEWAY_SQL_ERROR = "GATEWAY_SQL_ERROR";
 
-	// Path to the favicon image file
-	private static final String FAVICON_PATH = "res/favicon.ico";
-
-	// Buffer size for writing data
-	private static final int BUF_SIZE = 8192;
-
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
 
 	// If the gateway allows users who do not provide credentials
 	private static final boolean ALLOW_ANON_USERS = true;
 
-	// The port number
 	private final int port;
 
-	// Database credentials
 	private final String dbUrl;
 	private final String dbUser;
 	private final String dbPassword;
@@ -142,15 +157,13 @@ public class Server extends Thread {
 		while (true) {
 			try {
 				Socket clientSocket = serverSocket.accept();
-				executor.execute(new ClientHandler(clientSocket));
+				executor.execute(new ClientHandler(clientSocket, System
+						.currentTimeMillis()));
 
 			} catch (IOException e) {
 				// TODO log errors
 				e.printStackTrace();
 				break;
-			} catch (AuthenticationException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
 		}
 
@@ -162,29 +175,20 @@ public class Server extends Thread {
 	}
 
 	// TODO check all throws declarations
-	// TODO handle no db specified
-	// TODO add timestamp to db
-	// TODO move username/password
+	/**
+	 * A handler for a client interaction.
+	 */
 	class ClientHandler implements Runnable {
 
 		private final Socket socket;
 
-		private final String username;
-
 		private final UUID sessionId;
+		private final long timestamp;
 
-		public ClientHandler(Socket socket, String username, String password)
-				throws AuthenticationException {
+		public ClientHandler(Socket socket, long timestamp) {
 			this.socket = socket;
-			if (!validateUser(username, password)) {
-				throw new AuthenticationException("Invalid credentials");
-			}
-			this.username = username;
 			this.sessionId = UUID.randomUUID();
-		}
-
-		public ClientHandler(Socket socket) throws AuthenticationException {
-			this(socket, null, null);
+			this.timestamp = timestamp;
 		}
 
 		@Override
@@ -196,48 +200,58 @@ public class Server extends Thread {
 				PrintWriter out = new PrintWriter(socket.getOutputStream(),
 						true);
 
-				// Parse the client request and ensure it is a valid HTTP
-				// request
-				// TODO fix null pointers here
-				String[] request = in.readLine().split(" ");
-				if (request.length != 3
-						|| !request[0].equals("GET")
-						|| (!request[2].equals("HTTP/1.0") && !request[2]
+				// Parse the client request and ensure it is a valid request
+				String line = in.readLine();
+				String[] httpRequest = line != null ? line.split(" ") : null;
+				if (httpRequest == null
+						|| httpRequest.length != 3
+						|| !httpRequest[0].equals("GET")
+						|| (!httpRequest[2].equals("HTTP/1.0") && !httpRequest[2]
 								.equals("HTTP/1.1"))) {
-					out.print(getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST));
+					writeEmptyResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST,
+							out);
 					return;
 				}
+				Request request = new Request(httpRequest[1]);
 
-				// Handle all valid paths for the request url
-				URL requestUrl = new URL("http", "localhost", request[1]);
+				// Validate the user credentials
+				String username = request.getParameter(MY_USERNAME);
+				String password = request.getParameter(MY_PASSWORD);
+				if (!validateUser(username, password)) {
+					throw new AuthenticationException("Invalid credentials");
+				}
 
-				switch (requestUrl.getPath()) {
+				// Handle all valid paths for the request
+				switch (request.getPath()) {
 
 				case GATEWAY_PATH_NEARBY_SEARCH:
-					doPlaceSearch(new PlaceSearch(API_PATH_NEARBY_SEARCH,
-							requestUrl.getQuery()), out);
+					doPlaceSearch(API_PATH_NEARBY_SEARCH, request, out);
 					break;
 
 				case GATEWAY_PATH_TEXT_SEARCH:
-					doPlaceSearch(new PlaceSearch(API_PATH_TEXT_SEARCH,
-							requestUrl.getQuery()), out);
+					doPlaceSearch(API_PATH_TEXT_SEARCH, request, out);
 					break;
 
 				case GATEWAY_PATH_RADAR_SEARCH:
-					doPlaceSearch(new PlaceSearch(API_PATH_RADAR_SEARCH,
-							requestUrl.getQuery()), out);
+					doPlaceSearch(API_PATH_RADAR_SEARCH, request, out);
 					break;
 
 				case GATEWAY_PATH_ADD_USER:
-					addUser(new Request(requestUrl.getQuery()));
+					addUser(request, out);
 					break;
 
-				case GATEWAY_PATH_FAVICON:
-					doFavicon();
+				case GATEWAY_PATH_SEARCH_QUERY:
+					executeQuery(SEARCH_QUERY_PREFIX, QUERY_SUFFIX, request,
+							SEARCH_QUERY_PARAMETERS, out);
+					break;
+
+				case GATEWAY_PATH_RESULT_QUERY:
+					executeQuery(RESULT_QUERY_PREFIX, QUERY_SUFFIX, request,
+							RESULT_QUERY_PARAMETERS, out);
 					break;
 
 				default:
-					out.print(getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL));
+					writeEmptyResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL, out);
 					break;
 				}
 
@@ -245,6 +259,9 @@ public class Server extends Thread {
 				// TODO log errors
 				e.printStackTrace();
 				return;
+			} catch (AuthenticationException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			} finally {
 				try {
 					if (socket != null) {
@@ -269,48 +286,58 @@ public class Server extends Thread {
 		 * @throws IOException
 		 *             if the query could not be completed successfully
 		 */
-		private void doPlaceSearch(PlaceSearch placesSearch, PrintWriter out)
-				throws IOException {
-			// Execute the search and forward the response to the client
-			JSONObject jsonResponse = placesSearch.doSearch(out);
-
-			// Write the search and the results to the database
-			if (jsonResponse.getString(RESPONSE_STATUS).equals(
-					RESPONSE_STATUS_OK)) {
-				writeSearch(placesSearch);
-				writeResults(jsonResponse.getJSONArray(RESPONSE_RESULTS));
-			}
-		}
-
-		/**
-		 * Writes the favicon to the client.
-		 */
-		private void doFavicon() {
-			FileInputStream favicon = null;
+		private void doPlaceSearch(String apiPath, Request request,
+				PrintWriter clientOut) throws IOException {
+			SSLSocket socket = null;
 
 			try {
-				// Get the output stream for the socket
-				BufferedOutputStream out = new BufferedOutputStream(
-						socket.getOutputStream());
+				// Open a connection to the API server
+				socket = (SSLSocket) SSLSocketFactory.getDefault()
+						.createSocket(API_HOSTNAME, 443);
 
-				// Get the input stream for the favicon image file
-				favicon = new FileInputStream(new File(FAVICON_PATH));
+				// Send the API HTTP request
+				PrintWriter apiOut = new PrintWriter(new OutputStreamWriter(
+						socket.getOutputStream()), true);
+				apiOut.println("GET " + apiPath + request.getQuery()
+						+ " HTTP/1.0");
+				apiOut.println();
 
-				// Write the favicon to the client
-				byte[] buf = new byte[BUF_SIZE];
-				int len;
-				while ((len = favicon.read(buf, 0, buf.length)) > 0) {
-					out.write(buf, 0, len);
+				// Read and forward the response
+				BufferedReader in = new BufferedReader(new InputStreamReader(
+						socket.getInputStream()));
+				StringBuilder response = new StringBuilder();
+				String line;
+
+				// Read and forward the HTTP response headers
+				while ((line = in.readLine()) != null) {
+					clientOut.println(line);
+					if (line.isEmpty()) {
+						break;
+					}
 				}
-				out.flush();
+
+				// Read and forward the HTTP response body
+				while ((line = in.readLine()) != null) {
+					clientOut.println(line);
+					response.append(line);
+				}
+				JSONObject jsonResponse = new JSONObject(response.toString());
+
+				// Write the search and the results to the database
+				if (dbUrl != null
+						&& jsonResponse.getString(RESPONSE_STATUS).equals(
+								RESPONSE_STATUS_OK)) {
+					writeSearch(request);
+					writeResults(request.getParameter(USERNAME),
+							jsonResponse.getJSONArray(RESPONSE_RESULTS));
+				}
 
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				throw e;
 			} finally {
 				try {
-					if (favicon != null) {
-						favicon.close();
+					if (socket != null) {
+						socket.close();
 					}
 				} catch (IOException e) {
 					// Ignore because we're about to exit anyway.
@@ -321,12 +348,12 @@ public class Server extends Thread {
 		/**
 		 * Writes a search to the database.
 		 *
-		 * @param search
+		 * @param request
 		 *            the performed search
 		 *
 		 * @return True of the search was written successfully, false otherwise
 		 */
-		private boolean writeSearch(PlaceSearch search) {
+		private boolean writeSearch(Request request) {
 			Connection connection = null;
 			PreparedStatement statement = null;
 
@@ -338,20 +365,21 @@ public class Server extends Thread {
 				// Execute the update
 				statement = connection.prepareStatement(INSERT_SEARCH);
 				statement.setObject(1, sessionId);
-				statement.setString(2, username);
-				statement.setString(3, search.getParameter(QUERY));
-				statement.setString(4, search.getParameter(LOCATION));
-				statement.setString(5, search.getParameter(RADIUS));
-				statement.setString(6, search.getParameter(KEYWORD));
-				statement.setString(7, search.getParameter(LANGUAGE));
-				statement.setString(8, search.getParameter(MINPRICE));
-				statement.setString(9, search.getParameter(MAXPRICE));
-				statement.setString(10, search.getParameter(NAME));
-				statement.setString(11, search.getParameter(OPENNOW));
-				statement.setString(12, search.getParameter(RANKBY));
-				statement.setString(13, search.getParameter(TYPES));
-				statement.setString(14, search.getParameter(PAGETOKEN));
-				statement.setString(15, search.getParameter(ZAGATSELECTED));
+				statement.setTimestamp(2, new Timestamp(timestamp));
+				statement.setString(3, request.getParameter(USERNAME));
+				statement.setString(4, request.getParameter(QUERY));
+				statement.setString(5, request.getParameter(LOCATION));
+				statement.setString(6, request.getParameter(RADIUS));
+				statement.setString(7, request.getParameter(KEYWORD));
+				statement.setString(8, request.getParameter(LANGUAGE));
+				statement.setString(9, request.getParameter(MINPRICE));
+				statement.setString(10, request.getParameter(MAXPRICE));
+				statement.setString(11, request.getParameter(NAME));
+				statement.setString(12, request.getParameter(OPENNOW));
+				statement.setString(13, request.getParameter(RANKBY));
+				statement.setString(14, request.getParameter(TYPES));
+				statement.setString(15, request.getParameter(PAGETOKEN));
+				statement.setString(16, request.getParameter(ZAGATSELECTED));
 				statement.executeUpdate();
 
 			} catch (SQLException e) {
@@ -381,7 +409,7 @@ public class Server extends Thread {
 		 * @return True of the results were written successfully, false
 		 *         otherwise
 		 */
-		private boolean writeResults(JSONArray results) {
+		private boolean writeResults(String username, JSONArray results) {
 			Connection connection = null;
 			PreparedStatement statement = null;
 
@@ -391,16 +419,16 @@ public class Server extends Thread {
 						dbPassword);
 
 				// Execute the updates
-				// TODO refactor classes?
 				statement = connection.prepareStatement(INSERT_RESULT);
 				for (int i = 0; i < results.length(); i++) {
-					PlaceResult result = new PlaceResult(
-							results.getJSONObject(i));
+					JSONObject result = results.getJSONObject(i);
 					statement.setObject(1, sessionId);
 					statement.setString(2, username);
-					statement.setString(3, result.getPlaceId());
-					statement.setDouble(4, result.getLatitude());
-					statement.setDouble(5, result.getLongitude());
+					statement.setString(3, result.getString("place_id"));
+					statement.setDouble(4, result.getJSONObject("geometry")
+							.getJSONObject("location").getDouble("lat"));
+					statement.setDouble(5, result.getJSONObject("geometry")
+							.getJSONObject("location").getDouble("lng"));
 					statement.executeUpdate();
 				}
 
@@ -431,9 +459,14 @@ public class Server extends Thread {
 		 *
 		 * @return A {@link JSONObject} containing the results of the query
 		 */
-		private JSONObject executeQuery(String query) {
+		private void executeQuery(String queryPrefix, String querySuffix,
+				Request request, String[] allParameters, PrintWriter out) {
+			Query query = makeQuery(queryPrefix, querySuffix, request,
+					allParameters);
+			List<String> parameters = query.getParameters();
+
 			Connection connection = null;
-			Statement statement = null;
+			PreparedStatement statement = null;
 			ResultSet resultSet = null;
 
 			try {
@@ -442,13 +475,19 @@ public class Server extends Thread {
 						dbPassword);
 
 				// Execute the query
-				statement = connection.createStatement();
-				resultSet = statement.executeQuery(query);
+				// TODO change this
+				statement = connection.prepareStatement(query.getQuery());
+				for (int i = 0; i < parameters.size(); i++) {
+					statement.setString(i + 1, parameters.get(i));
+				}
+				resultSet = statement.executeQuery();
 
-				return getQueryResponse(resultSet);
+				// Write the response to the client
+				writeQueryResponse(resultSet, out);
 
 			} catch (SQLException e) {
-				return getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR);
+				e.printStackTrace();
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR, out);
 			} finally {
 				try {
 					if (resultSet != null) {
@@ -467,19 +506,6 @@ public class Server extends Thread {
 		}
 
 		/**
-		 * Adds a user with the specified username and password as an authorized
-		 * user.
-		 *
-		 * @param username
-		 *            the username
-		 *
-		 * @param password
-		 *            the password
-		 *
-		 * @return True if the user was successfully added, false otherwise
-		 */
-
-		/**
 		 * Adds a user with the username and password specified in the request
 		 * as an authorized user.
 		 *
@@ -488,7 +514,7 @@ public class Server extends Thread {
 		 *
 		 * @return True if the user was successfully added, false otherwise
 		 */
-		private boolean addUser(Request request) {
+		private boolean addUser(Request request, PrintWriter out) {
 			Connection connection = null;
 			PreparedStatement statement = null;
 
@@ -496,7 +522,7 @@ public class Server extends Thread {
 				// Get a new salt and hash the password
 				byte[] salt = getSalt();
 				byte[] hashedPassword = hashPassword(
-						request.getParameter(PASSWORD), salt);
+						request.getParameter(ADD_PASSWORD), salt);
 
 				// Open a connection to the database
 				connection = DriverManager.getConnection(dbUrl, dbUser,
@@ -504,10 +530,13 @@ public class Server extends Thread {
 
 				// Execute the update to add the user
 				statement = connection.prepareStatement(ADD_USER);
-				statement.setString(1, request.getParameter(USERNAME));
+				statement.setString(1, request.getParameter(ADD_USERNAME));
 				statement.setString(2, encode(salt));
 				statement.setString(3, encode(hashedPassword));
 				statement.executeUpdate();
+
+				// Write the response to the client
+				writeEmptyResponse(RESPONSE_STATUS_OK, out);
 
 			} catch (SQLException | NoSuchAlgorithmException e) {
 				return false;
@@ -592,8 +621,31 @@ public class Server extends Thread {
 		}
 	}
 
-	private static boolean allowAnonUsers() {
-		return ALLOW_ANON_USERS;
+	/**
+	 * Creates a {@link Query} to be used to query the database
+	 *
+	 * @param request
+	 *            the client request
+	 *
+	 * @param baseQuery
+	 *            the base query
+	 *
+	 * @param allParameters
+	 *            all valid parameters for this database query
+	 *
+	 * @return A {@link Query} object used to query the database.
+	 */
+	private static Query makeQuery(String queryPrefix, String querySuffix,
+			Request request, String[] allParameters) {
+		Query query = new Query(queryPrefix, querySuffix);
+		for (String parameter : allParameters) {
+			String value = request.getParameter(parameter);
+			if (value != null) {
+				query.addParameter(parameter, value);
+			}
+		}
+
+		return query;
 	}
 
 	/**
@@ -664,7 +716,7 @@ public class Server extends Thread {
 	 *
 	 * @return A JSONObject containing the results of the query
 	 */
-	private static JSONObject getQueryResponse(ResultSet resultSet) {
+	private static void writeQueryResponse(ResultSet resultSet, PrintWriter out) {
 		try {
 			JSONObject jsonResponse = new JSONObject();
 			JSONArray jsonResults = new JSONArray();
@@ -673,9 +725,7 @@ public class Server extends Thread {
 			while (resultSet.next()) {
 				JSONObject jsonResult = new JSONObject();
 				int cols = resultSetMetaData.getColumnCount();
-
-				// TODO check order
-				for (int i = cols; i > 0; i--) {
+				for (int i = 1; i <= cols; i++) {
 					jsonResult.put(resultSetMetaData.getColumnLabel(i)
 							.toLowerCase(), resultSet.getObject(i));
 				}
@@ -686,9 +736,11 @@ public class Server extends Thread {
 			jsonResponse.put(RESPONSE_STATUS, RESPONSE_STATUS_OK);
 			jsonResponse.put(RESPONSE_RESULTS, jsonResults);
 
-			return jsonResponse;
+			out.println(jsonResponse.toString(3));
+
 		} catch (SQLException e) {
-			return getEmptyQueryResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR);
+			e.printStackTrace();
+			writeEmptyResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR, out);
 		}
 	}
 
@@ -700,19 +752,26 @@ public class Server extends Thread {
 	 *
 	 * @return A {@link JSONObject} with empty results and the specified status
 	 */
-	private static JSONObject getEmptyQueryResponse(String status) {
+	private static void writeEmptyResponse(String status, PrintWriter out) {
 		JSONObject jsonResponse = new JSONObject();
 
 		jsonResponse.put(RESPONSE_STATUS, status);
 		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
 
-		return jsonResponse;
+		out.println(jsonResponse.toString(3));
+	}
+
+	/**
+	 * Returns whether anonymous users are allowed.
+	 *
+	 * @return True if anonymous users are allowed, false otherwise
+	 */
+	private static boolean allowAnonUsers() {
+		return ALLOW_ANON_USERS;
 	}
 
 	public static void main(String[] args) {
-		Server server = new Server(12345,
-				"jdbc:postgresql://71.199.115.219/googleplaces",
-				"googleplaces", "googleplaces");
+		Server server = new Server(12345);
 		server.start();
 	}
 }
