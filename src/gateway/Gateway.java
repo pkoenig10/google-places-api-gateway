@@ -94,15 +94,15 @@ public class Gateway extends Thread {
 
 	// JSON response fields and value
 	private static final String RESPONSE_RESULTS = "results";
+	private static final String RESPONSE_ERROR_MESSAGE = "error_message";
 	private static final String RESPONSE_STATUS = "status";
-	private static final String RESPONSE_STATUS_OK = "OK";
-	private static final String RESPONSE_STATUS_GATEWAY_INVALID_REQUEST = "GATEWAY_INVALID_REQUEST";
-	private static final String RESPONSE_STATUS_GATEWAY_INVALID_URL = "GATEWAY_INVALID_URL";
-	private static final String RESPONSE_STATUS_GATEWAY_AUTHENTICATION_FAILED = "GATEWAY_AUTHENTICATION_FAILED";
-	private static final String RESPONSE_STATUS_SEARCH_ERROR = "GATEWAY_SEARCH_ERROR";
-	private static final String RESPONSE_STATUS_GATEWAY_QUERY_ERROR = "GATEWAY_QUERY_ERROR";
-	private static final String RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR = "GATEWAY_AD_USER_ERROR";
-	private static final String RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR = "GATEWAY_UNKNOWN_ERROR";
+	private static final String OK = "OK";
+	private static final String GATEWAY_INVALID_REQUEST = "GATEWAY_INVALID_REQUEST";
+	private static final String GATEWAY_INVALID_URL = "GATEWAY_INVALID_URL";
+	private static final String GATEWAY_AUTHENTICATION_FAILED = "GATEWAY_AUTHENTICATION_FAILED";
+	private static final String GATEWAY_SEARCH_ERROR = "GATEWAY_SEARCH_ERROR";
+	private static final String GATEWAY_QUERY_ERROR = "GATEWAY_QUERY_ERROR";
+	private static final String GATEWAY_ADD_USER_ERROR = "GATEWAY_ADD_USER_ERROR";
 
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
@@ -202,7 +202,9 @@ public class Gateway extends Thread {
 						|| !httpRequest[0].equals("GET")
 						|| (!httpRequest[2].equals("HTTP/1.0") && !httpRequest[2]
 								.equals("HTTP/1.1"))) {
-					writeEmptyResponse(RESPONSE_STATUS_GATEWAY_INVALID_REQUEST,
+					writeErrorResponse(
+							GATEWAY_INVALID_REQUEST,
+							"This provided request is not a valid HTTP request.",
 							out);
 					return;
 				}
@@ -212,8 +214,9 @@ public class Gateway extends Thread {
 				String username = request.get(MY_USERNAME);
 				String password = request.get(MY_PASSWORD);
 				if (!validateUser(username, password)) {
-					writeEmptyResponse(
-							RESPONSE_STATUS_GATEWAY_AUTHENTICATION_FAILED, out);
+					writeErrorResponse(GATEWAY_AUTHENTICATION_FAILED,
+							"The provided credentials failed authentication.",
+							out);
 					return;
 				}
 
@@ -247,7 +250,8 @@ public class Gateway extends Thread {
 					break;
 
 				default:
-					writeEmptyResponse(RESPONSE_STATUS_GATEWAY_INVALID_URL, out);
+					writeErrorResponse(GATEWAY_INVALID_URL,
+							"The provided URL is unsupported or invalid.", out);
 					break;
 				}
 
@@ -327,23 +331,18 @@ public class Gateway extends Thread {
 
 				// Write the search and the results to the database
 				if (dbUrl != null
-						&& jsonResponse.getString(RESPONSE_STATUS).equals(
-								RESPONSE_STATUS_OK)) {
+						&& jsonResponse.getString(RESPONSE_STATUS).equals(OK)) {
 					writeSearch(request);
 					writeResults(request.get(MY_USERNAME),
 							jsonResponse.getJSONArray(RESPONSE_RESULTS));
 				}
 
-			} catch (IOException e) {
-				Log.e("Error performing search using Google Places Search API",
-						e);
-				writeEmptyResponse(RESPONSE_STATUS_SEARCH_ERROR, out);
-				return false;
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Unknown error performing search using Google Places Search API",
+				Log.e("Error performing search using Google Places Search API",
 						e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
+				writeErrorResponse(GATEWAY_SEARCH_ERROR,
+						"The Google Place Search could not be completed.", out);
 				return false;
 			} finally {
 				try {
@@ -492,7 +491,6 @@ public class Gateway extends Thread {
 		 *
 		 * @return True if the query was successfully added, false otherwise
 		 */
-		// TODO check javadoc
 		private boolean executeQuery(Request request, String queryPrefix,
 				String querySuffix, PrintWriter out) {
 			Query query = new Query(request, queryPrefix, querySuffix);
@@ -516,14 +514,11 @@ public class Gateway extends Thread {
 				// Write the response to the client
 				writeQueryResponse(resultSet, out);
 
-			} catch (SQLException e) {
-				Log.e("Error executing database query", e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_QUERY_ERROR, out);
-				return false;
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Unknown error executing database query", e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
+				Log.e("Error executing database query", e);
+				writeErrorResponse(GATEWAY_QUERY_ERROR,
+						"The query could not be completed.", out);
 				return false;
 			} finally {
 				try {
@@ -564,7 +559,6 @@ public class Gateway extends Thread {
 			try {
 				// Get a new salt and hash the password
 				byte[] salt = getSalt();
-				Log.i(request.getParameters().keySet().toString());
 				byte[] hashedPassword = hashPassword(request.get(NEW_PASSWORD),
 						salt);
 
@@ -580,20 +574,15 @@ public class Gateway extends Thread {
 				statement.executeUpdate();
 
 				// Write the response to the client
-				writeEmptyResponse(RESPONSE_STATUS_OK, out);
+				writeEmptyResponse(OK, out);
 
-			} catch (SQLException e) {
-				Log.e("Error adding user to database", e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR, out);
-				return false;
-			} catch (NoSuchAlgorithmException e) {
-				Log.e("Attempted to use invalid hash algorithm", e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR, out);
-				return false;
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Unknown error adding user to database", e);
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
+				Log.e("Error adding user to database", e);
+				writeErrorResponse(
+						GATEWAY_ADD_USER_ERROR,
+						"The new user could not be added to the database.  A user with the same username may already exist.",
+						out);
 				return false;
 			} finally {
 				try {
@@ -743,7 +732,7 @@ public class Gateway extends Thread {
 	}
 
 	/**
-	 * Convert a {@link ResultSet} from an SQL query to a {@link JSONObject} .
+	 * Writes a query response the client.
 	 *
 	 * @param resultSet
 	 *            the result set returned from the query
@@ -768,19 +757,20 @@ public class Gateway extends Thread {
 				jsonResults.put(jsonResult);
 			}
 
-			jsonResponse.put(RESPONSE_STATUS, RESPONSE_STATUS_OK);
+			jsonResponse.put(RESPONSE_STATUS, OK);
 			jsonResponse.put(RESPONSE_RESULTS, jsonResults);
 
 			out.println(jsonResponse.toString(3));
 
 		} catch (SQLException e) {
 			Log.e("Error reading database query results", e);
-			writeEmptyResponse(RESPONSE_STATUS_GATEWAY_QUERY_ERROR, out);
+			writeErrorResponse(GATEWAY_QUERY_ERROR,
+					"The query results could not be read.", out);
 		}
 	}
 
 	/**
-	 * Returns a {@link JSONObject} with empty results and the specified status.
+	 * Writes an empty query response to the client.
 	 *
 	 * @param status
 	 *            the status
@@ -792,6 +782,29 @@ public class Gateway extends Thread {
 		JSONObject jsonResponse = new JSONObject();
 
 		jsonResponse.put(RESPONSE_STATUS, status);
+		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
+
+		out.println(jsonResponse.toString(3));
+	}
+
+	/**
+	 * Writes an error query response to the client.
+	 *
+	 * @param status
+	 *            the status
+	 *
+	 * @param message
+	 *            the error message
+	 *
+	 * @param out
+	 *            the client output stream
+	 */
+	private static void writeErrorResponse(String status, String message,
+			PrintWriter out) {
+		JSONObject jsonResponse = new JSONObject();
+
+		jsonResponse.put(RESPONSE_STATUS, status);
+		jsonResponse.put(RESPONSE_ERROR_MESSAGE, message);
 		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
 
 		out.println(jsonResponse.toString(3));
