@@ -18,7 +18,7 @@ public abstract class Log {
 	 *            the message
 	 */
 	public static void e(String message) {
-		System.err.format("%s:: %s%n", getTimestamp(), message);
+		System.err.format("%s: %s%n", getTimestamp(), message);
 		System.err.flush();
 	}
 

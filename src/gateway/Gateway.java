@@ -24,7 +24,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.naming.AuthenticationException;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
@@ -35,7 +34,7 @@ import org.json.JSONObject;
  * A gateway server for the Google Place Search API that supports user
  * authentication and logs and analyzes search queries and results.
  */
-public class Server extends Thread {
+public class Gateway extends Thread {
 
 	// Properties file with database information
 	private static final String PROPERTIES = "gateway.properties";
@@ -58,7 +57,6 @@ public class Server extends Thread {
 	private static final String API_PATH_RADAR_SEARCH = "https://maps.googleapis.com/maps/api/place/radarsearch/json?";
 
 	// SQL statements for updating and querying the database
-	// TODO add order by most recent
 	private static final String INSERT_SEARCH = "INSERT INTO searches (sessionid, timestamp, username, query, location, radius, keyword, language, "
 			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 	private static final String INSERT_RESULT = "INSERT INTO results (sessionid, timestamp, username, placeid, lat, lng) VALUES (?, ?, ?, ?, ?, ?);";
@@ -72,8 +70,8 @@ public class Server extends Thread {
 	// URL query parameters for the gateway
 	private static final String MY_USERNAME = "myusername";
 	private static final String MY_PASSWORD = "mypassword";
-	private static final String ADD_USERNAME = "addusername";
-	private static final String ADD_PASSWORD = "addpassword";
+	private static final String NEW_USERNAME = "newusername";
+	private static final String NEW_PASSWORD = "newpassword";
 
 	// URL query parameters for the Google Place Search API
 	private static final String QUERY = "query";
@@ -100,8 +98,11 @@ public class Server extends Thread {
 	private static final String RESPONSE_STATUS_OK = "OK";
 	private static final String RESPONSE_STATUS_GATEWAY_INVALID_REQUEST = "GATEWAY_INVALID_REQUEST";
 	private static final String RESPONSE_STATUS_GATEWAY_INVALID_URL = "GATEWAY_INVALID_URL";
-	private static final String RESPONSE_STATUS_GATEWAY_JSON_ERROR = "GATEWAY_JSON_ERROR";
-	private static final String RESPONSE_STATUS_GATEWAY_SQL_ERROR = "GATEWAY_SQL_ERROR";
+	private static final String RESPONSE_STATUS_GATEWAY_AUTHENTICATION_FAILED = "GATEWAY_AUTHENTICATION_FAILED";
+	private static final String RESPONSE_STATUS_SEARCH_ERROR = "GATEWAY_SEARCH_ERROR";
+	private static final String RESPONSE_STATUS_GATEWAY_QUERY_ERROR = "GATEWAY_QUERY_ERROR";
+	private static final String RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR = "GATEWAY_AD_USER_ERROR";
+	private static final String RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR = "GATEWAY_UNKNOWN_ERROR";
 
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
@@ -117,7 +118,7 @@ public class Server extends Thread {
 
 	private final ExecutorService executor;
 
-	public Server(int port, String dbUrl, String dbUser, String dbPassword) {
+	public Gateway(int port, String dbUrl, String dbUser, String dbPassword) {
 		this.port = port;
 		this.dbUrl = dbUrl;
 		this.dbUser = dbUser;
@@ -125,7 +126,7 @@ public class Server extends Thread {
 		executor = Executors.newFixedThreadPool(NUM_THREADS);
 	}
 
-	public Server(int port) {
+	public Gateway(int port) {
 		this(port, null, null, null);
 	}
 
@@ -140,18 +141,22 @@ public class Server extends Thread {
 			return;
 		}
 
+		Log.i(String.format("Starting gateway on port %d", port));
+
 		// Accept incoming connections, handle them on a background thread,
 		// and immediately begin listening for other incoming client
 		// connections.
 		while (true) {
 			try {
 				Socket clientSocket = serverSocket.accept();
+				Log.i(String.format("Accepted connection from %s:%d",
+						clientSocket.getInetAddress().getHostAddress(),
+						clientSocket.getPort()));
 				executor.execute(new ClientHandler(clientSocket, System
 						.currentTimeMillis()));
 
 			} catch (IOException e) {
-				// TODO log errors
-				e.printStackTrace();
+				Log.e("Exception when accepting connection", e);
 				break;
 			}
 		}
@@ -159,11 +164,11 @@ public class Server extends Thread {
 		try {
 			serverSocket.close();
 		} catch (IOException e) {
-			// Ignore because we're about to exit anyway.
+			// Do nothing because we are exiting
+			Log.e("Exception when closing server socket", e);
 		}
 	}
 
-	// TODO check all throws declarations
 	/**
 	 * A handler for a client interaction.
 	 */
@@ -207,7 +212,9 @@ public class Server extends Thread {
 				String username = request.get(MY_USERNAME);
 				String password = request.get(MY_PASSWORD);
 				if (!validateUser(username, password)) {
-					throw new AuthenticationException("Invalid credentials");
+					writeEmptyResponse(
+							RESPONSE_STATUS_GATEWAY_AUTHENTICATION_FAILED, out);
+					return;
 				}
 
 				// Handle all valid paths for the request
@@ -245,19 +252,20 @@ public class Server extends Thread {
 				}
 
 			} catch (IOException e) {
-				// TODO log errors
-				e.printStackTrace();
+				Log.e("Error reading client request", e);
 				return;
-			} catch (AuthenticationException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			} catch (Exception e) {
+				// Catch runtime exceptions
+				Log.e("Unknown error handling client request", e);
+				return;
 			} finally {
 				try {
 					if (socket != null) {
 						socket.close();
 					}
 				} catch (IOException e) {
-					// Ignore because we're about to exit anyway.
+					// Do nothing because we are exiting
+					Log.e("Exception when closing socket", e);
 				}
 			}
 		}
@@ -272,11 +280,13 @@ public class Server extends Thread {
 		 * @param out
 		 *            the client output stream
 		 *
+		 * @return True of the search was successfully, false otherwise
+		 *
 		 * @throws IOException
 		 *             if the query could not be completed successfully
 		 */
-		private void doPlaceSearch(Request request, String apiPath,
-				PrintWriter out) throws IOException {
+		private boolean doPlaceSearch(Request request, String apiPath,
+				PrintWriter out) {
 			SSLSocket apiSocket = null;
 
 			try {
@@ -322,16 +332,28 @@ public class Server extends Thread {
 				}
 
 			} catch (IOException e) {
-				throw e;
+				Log.e("Error performing search using Google Places Search API",
+						e);
+				writeEmptyResponse(RESPONSE_STATUS_SEARCH_ERROR, out);
+				return false;
+			} catch (Exception e) {
+				// Catch runtime exceptions
+				Log.e("Unknown error performing search using Google Places Search API",
+						e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
+				return false;
 			} finally {
 				try {
-					if (socket != null) {
-						socket.close();
+					if (apiSocket != null) {
+						apiSocket.close();
 					}
 				} catch (IOException e) {
-					// Ignore because we're about to exit anyway.
+					// Do nothing because we are exiting
+					Log.e("Exception when closing socket", e);
 				}
 			}
+
+			return true;
 		}
 
 		/**
@@ -340,7 +362,7 @@ public class Server extends Thread {
 		 * @param request
 		 *            the performed search
 		 *
-		 * @return True of the search was written successfully, false otherwise
+		 * @return True if the search was written successfully, false otherwise
 		 */
 		private boolean writeSearch(Request request) {
 			Connection connection = null;
@@ -372,6 +394,8 @@ public class Server extends Thread {
 				statement.executeUpdate();
 
 			} catch (SQLException e) {
+				// Do nothing and do not write to database
+				Log.e("Error writing search to database", e);
 				return false;
 			} finally {
 				try {
@@ -383,6 +407,7 @@ public class Server extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
+					Log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -412,16 +437,19 @@ public class Server extends Thread {
 				for (int i = 0; i < results.length(); i++) {
 					JSONObject result = results.getJSONObject(i);
 					statement.setObject(1, sessionId);
-					statement.setString(2, username);
-					statement.setString(3, result.getString("place_id"));
-					statement.setDouble(4, result.getJSONObject("geometry")
-							.getJSONObject("location").getDouble("lat"));
+					statement.setTimestamp(2, new Timestamp(timestamp));
+					statement.setString(3, username);
+					statement.setString(4, result.getString("place_id"));
 					statement.setDouble(5, result.getJSONObject("geometry")
+							.getJSONObject("location").getDouble("lat"));
+					statement.setDouble(6, result.getJSONObject("geometry")
 							.getJSONObject("location").getDouble("lng"));
 					statement.executeUpdate();
 				}
 
 			} catch (SQLException e) {
+				// Do nothing and do not write to database
+				Log.e("Error writing results to database", e);
 				return false;
 			} finally {
 				try {
@@ -433,6 +461,7 @@ public class Server extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
+					Log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -446,9 +475,10 @@ public class Server extends Thread {
 		 * @param query
 		 *            the query
 		 *
-		 * @return A {@link JSONObject} containing the results of the query
+		 * @return True if the query was successfully added, false otherwise
 		 */
-		private void executeQuery(Request request, String queryPrefix,
+		// TODO check javadoc
+		private boolean executeQuery(Request request, String queryPrefix,
 				String querySuffix, PrintWriter out) {
 			Query query = new Query(request, queryPrefix, querySuffix);
 
@@ -472,8 +502,14 @@ public class Server extends Thread {
 				writeQueryResponse(resultSet, out);
 
 			} catch (SQLException e) {
-				e.printStackTrace();
-				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_SQL_ERROR, out);
+				Log.e("Error executing database query", e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_QUERY_ERROR, out);
+				return false;
+			} catch (Exception e) {
+				// Catch runtime exceptions
+				Log.e("Unknown error executing database query", e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
+				return false;
 			} finally {
 				try {
 					if (resultSet != null) {
@@ -487,8 +523,11 @@ public class Server extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
+					Log.e("Exception when closing database resources", e);
 				}
 			}
+
+			return true;
 		}
 
 		/**
@@ -507,7 +546,8 @@ public class Server extends Thread {
 			try {
 				// Get a new salt and hash the password
 				byte[] salt = getSalt();
-				byte[] hashedPassword = hashPassword(request.get(ADD_PASSWORD),
+				Log.i(request.getParameters().keySet().toString());
+				byte[] hashedPassword = hashPassword(request.get(NEW_PASSWORD),
 						salt);
 
 				// Open a connection to the database
@@ -516,7 +556,7 @@ public class Server extends Thread {
 
 				// Execute the update to add the user
 				statement = connection.prepareStatement(ADD_USER);
-				statement.setString(1, request.get(ADD_USERNAME));
+				statement.setString(1, request.get(NEW_USERNAME));
 				statement.setString(2, encode(salt));
 				statement.setString(3, encode(hashedPassword));
 				statement.executeUpdate();
@@ -524,7 +564,18 @@ public class Server extends Thread {
 				// Write the response to the client
 				writeEmptyResponse(RESPONSE_STATUS_OK, out);
 
-			} catch (SQLException | NoSuchAlgorithmException e) {
+			} catch (SQLException e) {
+				Log.e("Error adding user to database", e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR, out);
+				return false;
+			} catch (NoSuchAlgorithmException e) {
+				Log.e("Attempted to use invalid hash algorithm", e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_ADD_USER_ERROR, out);
+				return false;
+			} catch (Exception e) {
+				// Catch runtime exceptions
+				Log.e("Unknown error adding user to database", e);
+				writeEmptyResponse(RESPONSE_STATUS_GATEWAY_UNKNOWN_ERROR, out);
 				return false;
 			} finally {
 				try {
@@ -536,6 +587,7 @@ public class Server extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
+					Log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -585,7 +637,11 @@ public class Server extends Thread {
 					}
 				}
 
-			} catch (SQLException | NoSuchAlgorithmException e) {
+			} catch (SQLException e) {
+				Log.e("Error validating user credentials with database", e);
+				return false;
+			} catch (NoSuchAlgorithmException e) {
+				Log.e("Attempted to use invalid hash algorithm", e);
 				return false;
 			} finally {
 				try {
@@ -600,6 +656,7 @@ public class Server extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
+					Log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -698,8 +755,8 @@ public class Server extends Thread {
 			out.println(jsonResponse.toString(3));
 
 		} catch (SQLException e) {
-			e.printStackTrace();
-			writeEmptyResponse(RESPONSE_STATUS_GATEWAY_JSON_ERROR, out);
+			Log.e("Error reading database query results", e);
+			writeEmptyResponse(RESPONSE_STATUS_GATEWAY_QUERY_ERROR, out);
 		}
 	}
 
@@ -736,19 +793,21 @@ public class Server extends Thread {
 		String dbPassword = null;
 
 		try {
-			properties.load(new FileInputStream(PROPERTIES));
 			// Read database information from properties file
+			properties.load(new FileInputStream(PROPERTIES));
 			dbUrl = properties.getProperty(DB_URL);
 			dbUsername = properties.getProperty(DB_USERNAME);
 			dbPassword = properties.getProperty(DB_PASSWORD);
 
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			// Do nothing and start gateway without database
+			Log.e(String.format(
+					"Error reading database connection information from %s",
+					PROPERTIES), e);
 		}
 
 		// Start gateway server
-		Server server = new Server(8080, dbUrl, dbUsername, dbPassword);
+		Gateway server = new Gateway(8080, dbUrl, dbUsername, dbPassword);
 		server.start();
 	}
 }
