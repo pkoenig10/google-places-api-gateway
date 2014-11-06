@@ -28,6 +28,8 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
+import log.Log;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 

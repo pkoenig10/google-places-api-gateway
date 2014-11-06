@@ -1,4 +1,4 @@
-package gateway;
+package log;
 
 import java.io.PrintStream;
 import java.time.LocalDateTime;
