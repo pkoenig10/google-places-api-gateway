@@ -39,9 +39,7 @@ public class Gateway extends Thread {
 
 	// Properties file with database information
 	private static final String PROPERTIES = "gateway.properties";
-	private static final String DB_URL = "dbUrl";
-	private static final String DB_USER = "dbUser";
-	private static final String DB_PASSWORD = "dbPassword";
+	private static final String URL = "url";
 
 	// URL paths used by the client to interact with the gateway
 	private static final String GATEWAY_PATH_NEARBY_SEARCH = "/google-places-api-gateway/nearbysearch";
@@ -114,35 +112,29 @@ public class Gateway extends Thread {
 	private final int port;
 
 	private final String dbUrl;
-	private final String dbUser;
-	private final String dbPassword;
+	private final Properties properties;
 
 	private final Log log;
 
 	private final ExecutorService executor;
 	private boolean run;
 
-	public Gateway(int port, String dbUrl, String dbUser, String dbPassword,
+	public Gateway(int port, String dbUrl, Properties properties,
 			PrintStream logOut, PrintStream logErr) {
 		this.port = port;
 		this.dbUrl = dbUrl;
-		this.dbUser = dbUser;
-		this.dbPassword = dbPassword;
+		this.properties = properties;
 		this.log = new Log(logOut, logErr);
 		this.run = true;
 		executor = Executors.newFixedThreadPool(NUM_THREADS);
 	}
 
-	public Gateway(int port, String dbUrl, String dbUser, String dbPassword) {
-		this(port, dbUrl, dbUser, dbPassword, System.out, System.err);
-	}
-
-	public Gateway(int port, PrintStream logOut, PrintStream logErr) {
-		this(port, null, null, null, logOut, logErr);
+	public Gateway(int port, String dbUrl, Properties properties) {
+		this(port, dbUrl, properties, System.out, System.err);
 	}
 
 	public Gateway(int port) {
-		this(port, null, null, null);
+		this(port, null, null);
 	}
 
 	/**
@@ -394,8 +386,7 @@ public class Gateway extends Thread {
 
 			try {
 				// Open a connection to the database
-				connection = DriverManager.getConnection(dbUrl, dbUser,
-						dbPassword);
+				connection = DriverManager.getConnection(dbUrl, properties);
 
 				// Execute the update
 				statement = connection.prepareStatement(INSERT_SEARCH);
@@ -456,8 +447,7 @@ public class Gateway extends Thread {
 
 			try {
 				// Open a connection to the database
-				connection = DriverManager.getConnection(dbUrl, dbUser,
-						dbPassword);
+				connection = DriverManager.getConnection(dbUrl, properties);
 
 				// Execute the updates
 				statement = connection.prepareStatement(INSERT_RESULT);
@@ -523,8 +513,7 @@ public class Gateway extends Thread {
 
 			try {
 				// Open a connection to the database
-				connection = DriverManager.getConnection(dbUrl, dbUser,
-						dbPassword);
+				connection = DriverManager.getConnection(dbUrl, properties);
 
 				// Execute the query
 				statement = connection.prepareStatement(query.getQuery());
@@ -585,8 +574,7 @@ public class Gateway extends Thread {
 						salt);
 
 				// Open a connection to the database
-				connection = DriverManager.getConnection(dbUrl, dbUser,
-						dbPassword);
+				connection = DriverManager.getConnection(dbUrl, properties);
 
 				// Execute the update to add the user
 				statement = connection.prepareStatement(ADD_USER);
@@ -646,8 +634,7 @@ public class Gateway extends Thread {
 
 			try {
 				// Open a connection to the database
-				connection = DriverManager.getConnection(dbUrl, dbUser,
-						dbPassword);
+				connection = DriverManager.getConnection(dbUrl, properties);
 
 				// Execute the query to get the stored salt and password
 				statement = connection.prepareStatement(VALIDATE_USER);
@@ -841,15 +828,11 @@ public class Gateway extends Thread {
 	public static void main(String[] args) {
 		Properties properties = new Properties();
 		String dbUrl = null;
-		String dbUsername = null;
-		String dbPassword = null;
 
 		try {
 			// Read database information from properties file
 			properties.load(new FileInputStream(PROPERTIES));
-			dbUrl = properties.getProperty(DB_URL);
-			dbUsername = properties.getProperty(DB_USER);
-			dbPassword = properties.getProperty(DB_PASSWORD);
+			dbUrl = properties.getProperty(URL);
 
 		} catch (IOException e) {
 			// Do nothing and start gateway without database
@@ -861,7 +844,7 @@ public class Gateway extends Thread {
 		}
 
 		// Start gateway server
-		Gateway gateway = new Gateway(8080, dbUrl, dbUsername, dbPassword);
+		Gateway gateway = new Gateway(8080, dbUrl, properties);
 		gateway.start();
 	}
 }
