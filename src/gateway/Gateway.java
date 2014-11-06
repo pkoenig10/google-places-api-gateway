@@ -39,7 +39,7 @@ public class Gateway extends Thread {
 	// Properties file with database information
 	private static final String PROPERTIES = "gateway.properties";
 	private static final String DB_URL = "dbUrl";
-	private static final String DB_USERNAME = "dbUsername";
+	private static final String DB_USER = "dbUser";
 	private static final String DB_PASSWORD = "dbPassword";
 
 	// URL paths used by the client to interact with the gateway
@@ -829,7 +829,7 @@ public class Gateway extends Thread {
 			// Read database information from properties file
 			properties.load(new FileInputStream(PROPERTIES));
 			dbUrl = properties.getProperty(DB_URL);
-			dbUsername = properties.getProperty(DB_USERNAME);
+			dbUsername = properties.getProperty(DB_USER);
 			dbPassword = properties.getProperty(DB_PASSWORD);
 
 		} catch (IOException e) {
