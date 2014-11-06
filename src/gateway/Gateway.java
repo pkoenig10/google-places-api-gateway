@@ -55,16 +55,19 @@ public class Gateway extends Thread {
 	private static final String API_PATH_TEXT_SEARCH = "https://maps.googleapis.com/maps/api/place/textsearch/json?";
 	private static final String API_PATH_RADAR_SEARCH = "https://maps.googleapis.com/maps/api/place/radarsearch/json?";
 
+	// HTTP response header
+	private static final String HTTP_RESPONSE = "HTTP/1.0 200 OK";
+
 	// SQL statements for updating and querying the database
-	private static final String INSERT_SEARCH = "INSERT INTO searches (sessionid, timestamp, username, query, location, radius, keyword, language, "
-			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+	private static final String INSERT_SEARCH = "INSERT INTO searches (sessionid, timestamp, searchtype, username, query, location, radius, keyword, language, "
+			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 	private static final String INSERT_RESULT = "INSERT INTO results (sessionid, timestamp, username, placeid, lat, lng) VALUES (?, ?, ?, ?, ?, ?);";
 	private static final String ADD_USER = "INSERT INTO users (username, salt, passhash) VALUES (?, ?, ?);";
 	private static final String VALIDATE_USER = "SELECT salt, passhash FROM users WHERE username = ? LIMIT 1;";
 	private static final String SEARCH_QUERY_PREFIX = "SELECT sessionid, timestamp, username, query, location, radius, keyword, language, "
-			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected FROM SEARCHES";
-	private static final String RESULT_QUERY_PREFIX = "SELECT sessionid, timestamp, username, placeid, lat, lng FROM RESULTS";
-	private static final String QUERY_SUFFIX = " ORDER BY timestamp DESC LIMIT 500;";
+			+ "minprice, maxprice, name, opennow, rankby, types, pagetoken, zagatselected FROM searches";
+	private static final String RESULT_QUERY_PREFIX = "SELECT sessionid, timestamp, username, placeid, lat, lng FROM results";
+	private static final String QUERY_SUFFIX = " ORDER BY timestamp DESC LIMIT 20;";
 
 	// URL query parameters for the gateway
 	private static final String MY_USERNAME = "myusername";
@@ -103,6 +106,11 @@ public class Gateway extends Thread {
 	private static final String GATEWAY_QUERY_ERROR = "GATEWAY_QUERY_ERROR";
 	private static final String GATEWAY_ADD_USER_ERROR = "GATEWAY_ADD_USER_ERROR";
 
+	// Search types
+	private static final String NEARBY_SEARCH = "nearby";
+	private static final String TEXT_SEARCH = "text";
+	private static final String RADAR_SEARCH = "radar";
+
 	// Number of threads to be used
 	private static final int NUM_THREADS = 10;
 
@@ -110,6 +118,7 @@ public class Gateway extends Thread {
 	private static final boolean ALLOW_ANON_USERS = true;
 
 	private final int port;
+	private ServerSocket serverSocket = null;
 
 	private final String dbUrl;
 	private final Properties properties;
@@ -117,15 +126,13 @@ public class Gateway extends Thread {
 	private final Log log;
 
 	private final ExecutorService executor;
-	private boolean run;
 
 	public Gateway(int port, String dbUrl, Properties properties,
 			PrintStream logOut, PrintStream logErr) {
 		this.port = port;
 		this.dbUrl = dbUrl;
-		this.properties = properties;
+		this.properties = properties == null ? new Properties() : properties;
 		this.log = new Log(logOut, logErr);
-		this.run = true;
 		executor = Executors.newFixedThreadPool(NUM_THREADS);
 	}
 
@@ -138,17 +145,21 @@ public class Gateway extends Thread {
 	}
 
 	/**
-	 * Informs the gateway that it should stop.
+	 * Begins a gateway shutdown.
+	 *
+	 * @throws InterruptedException
 	 */
-	public void quit() {
-		this.run = false;
+	public void shutdown() {
+		try {
+			serverSocket.close();
+		} catch (IOException e) {
+			// Do nothing because we are exiting
+			log.e("Exception when closing server socket", e);
+		}
 	}
 
 	@Override
 	public void run() {
-		// Create the server socket
-		ServerSocket serverSocket = null;
-
 		try {
 			serverSocket = new ServerSocket(port);
 		} catch (IOException e) {
@@ -160,7 +171,7 @@ public class Gateway extends Thread {
 		// Accept incoming connections, handle them on a background thread,
 		// and immediately begin listening for other incoming client
 		// connections.
-		while (run) {
+		while (true) {
 			try {
 				Socket clientSocket = serverSocket.accept();
 				log.i(String.format("Accepted connection from %s:%d",
@@ -170,7 +181,7 @@ public class Gateway extends Thread {
 						.currentTimeMillis()));
 
 			} catch (IOException e) {
-				log.e("Exception when accepting connection", e);
+				// Do nothing because we are exiting
 				break;
 			}
 		}
@@ -179,8 +190,10 @@ public class Gateway extends Thread {
 			serverSocket.close();
 		} catch (IOException e) {
 			// Do nothing because we are exiting
-			log.e("Exception when closing server socket", e);
 		}
+
+		// Complete submitted requests and shutdown
+		executor.shutdown();
 	}
 
 	/**
@@ -238,15 +251,18 @@ public class Gateway extends Thread {
 				switch (request.getPath()) {
 
 				case GATEWAY_PATH_NEARBY_SEARCH:
-					doPlaceSearch(request, API_PATH_NEARBY_SEARCH, out);
+					doPlaceSearch(request, NEARBY_SEARCH,
+							API_PATH_NEARBY_SEARCH, out);
 					break;
 
 				case GATEWAY_PATH_TEXT_SEARCH:
-					doPlaceSearch(request, API_PATH_TEXT_SEARCH, out);
+					doPlaceSearch(request, TEXT_SEARCH, API_PATH_TEXT_SEARCH,
+							out);
 					break;
 
 				case GATEWAY_PATH_RADAR_SEARCH:
-					doPlaceSearch(request, API_PATH_RADAR_SEARCH, out);
+					doPlaceSearch(request, RADAR_SEARCH, API_PATH_RADAR_SEARCH,
+							out);
 					break;
 
 				case GATEWAY_PATH_ADD_USER:
@@ -306,8 +322,8 @@ public class Gateway extends Thread {
 		 * @throws IOException
 		 *             if the query could not be completed successfully
 		 */
-		private boolean doPlaceSearch(Request request, String apiPath,
-				PrintWriter out) {
+		private boolean doPlaceSearch(Request request, String searchType,
+				String apiPath, PrintWriter out) {
 			SSLSocket apiSocket = null;
 
 			try {
@@ -346,7 +362,7 @@ public class Gateway extends Thread {
 				// Write the search and the results to the database
 				if (dbUrl != null
 						&& jsonResponse.getString(RESPONSE_STATUS).equals(OK)) {
-					writeSearch(request);
+					writeSearch(request, searchType);
 					writeResults(request.get(MY_USERNAME),
 							jsonResponse.getJSONArray(RESPONSE_RESULTS));
 				}
@@ -380,7 +396,7 @@ public class Gateway extends Thread {
 		 *
 		 * @return True if the search was written successfully, false otherwise
 		 */
-		private boolean writeSearch(Request request) {
+		private boolean writeSearch(Request request, String searchType) {
 			Connection connection = null;
 			PreparedStatement statement = null;
 
@@ -392,20 +408,21 @@ public class Gateway extends Thread {
 				statement = connection.prepareStatement(INSERT_SEARCH);
 				statement.setObject(1, sessionId);
 				statement.setTimestamp(2, new Timestamp(timestamp));
-				statement.setString(3, request.get(MY_USERNAME));
-				statement.setString(4, request.get(QUERY));
-				statement.setString(5, request.get(LOCATION));
-				statement.setString(6, request.get(RADIUS));
-				statement.setString(7, request.get(KEYWORD));
-				statement.setString(8, request.get(LANGUAGE));
-				statement.setString(9, request.get(MINPRICE));
-				statement.setString(10, request.get(MAXPRICE));
-				statement.setString(11, request.get(NAME));
-				statement.setString(12, request.get(OPENNOW));
-				statement.setString(13, request.get(RANKBY));
-				statement.setString(14, request.get(TYPES));
-				statement.setString(15, request.get(PAGETOKEN));
-				statement.setString(16, request.get(ZAGATSELECTED));
+				statement.setString(3, searchType);
+				statement.setString(4, request.get(MY_USERNAME));
+				statement.setString(5, request.get(QUERY));
+				statement.setString(6, request.get(LOCATION));
+				statement.setString(7, request.get(RADIUS));
+				statement.setString(8, request.get(KEYWORD));
+				statement.setString(9, request.get(LANGUAGE));
+				statement.setString(10, request.get(MINPRICE));
+				statement.setString(11, request.get(MAXPRICE));
+				statement.setString(12, request.get(NAME));
+				statement.setString(13, request.get(OPENNOW));
+				statement.setString(14, request.get(RANKBY));
+				statement.setString(15, request.get(TYPES));
+				statement.setString(16, request.get(PAGETOKEN));
+				statement.setString(17, request.get(ZAGATSELECTED));
 				statement.executeUpdate();
 
 			} catch (SQLException e) {
@@ -772,6 +789,8 @@ public class Gateway extends Thread {
 		jsonResponse.put(RESPONSE_STATUS, OK);
 		jsonResponse.put(RESPONSE_RESULTS, jsonResults);
 
+		out.println(HTTP_RESPONSE);
+		out.println();
 		out.println(jsonResponse.toString(3));
 	}
 
@@ -790,6 +809,8 @@ public class Gateway extends Thread {
 		jsonResponse.put(RESPONSE_STATUS, status);
 		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
 
+		out.println(HTTP_RESPONSE);
+		out.println();
 		out.println(jsonResponse.toString(3));
 	}
 
@@ -813,6 +834,8 @@ public class Gateway extends Thread {
 		jsonResponse.put(RESPONSE_ERROR_MESSAGE, message);
 		jsonResponse.put(RESPONSE_RESULTS, new JSONArray());
 
+		out.println(HTTP_RESPONSE);
+		out.println();
 		out.println(jsonResponse.toString(3));
 	}
 

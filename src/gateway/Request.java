@@ -17,7 +17,7 @@ public class Request {
 	public Request(String urlPath) throws MalformedURLException {
 		URL url = new URL("http", "localhost", urlPath);
 		this.path = url.getPath();
-		this.query = url.getQuery() != null ? url.getQuery() : "";
+		this.query = url.getQuery() == null ? "" : url.getQuery();
 		this.parameters = parseQuery(query);
 	}
 
