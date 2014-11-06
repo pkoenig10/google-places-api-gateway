@@ -1,12 +1,21 @@
 package gateway;
 
+import java.io.PrintStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
  * A simple utility for logging.
  */
-public abstract class Log {
+public class Log {
+
+	private final PrintStream out;
+	private final PrintStream err;
+
+	public Log(PrintStream out, PrintStream err) {
+		this.out = out;
+		this.err = err;
+	}
 
 	private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter
 			.ofPattern("yyyy-MM-dd hh:mm:ss");
@@ -17,9 +26,11 @@ public abstract class Log {
 	 * @param message
 	 *            the message
 	 */
-	public static void e(String message) {
-		System.err.format("%s: %s%n", getTimestamp(), message);
-		System.err.flush();
+	public void e(String message) {
+		if (err != null) {
+			err.format("%s: %s%n", getTimestamp(), message);
+			err.flush();
+		}
 	}
 
 	/**
@@ -32,10 +43,13 @@ public abstract class Log {
 	 * @param throwable
 	 *            the {@link Throwable}
 	 */
-	public static void e(String message, Throwable throwable) {
-		System.err.format("%s: %s%n", getTimestamp(), message);
-		System.err.flush();
-		throwable.printStackTrace();
+	public void e(String message, Throwable throwable) {
+		if (err != null) {
+			err.format("%s: %s%n", getTimestamp(), message);
+			err.flush();
+			throwable.printStackTrace(err);
+			;
+		}
 	}
 
 	/**
@@ -44,9 +58,11 @@ public abstract class Log {
 	 * @param message
 	 *            the message
 	 */
-	public static void i(String message) {
-		System.out.format("%s: %s%n", getTimestamp(), message);
-		System.out.flush();
+	public void i(String message) {
+		if (out != null) {
+			out.format("%s: %s%n", getTimestamp(), message);
+			out.flush();
+		}
 	}
 
 	/**

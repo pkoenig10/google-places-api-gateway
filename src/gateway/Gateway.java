@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -116,18 +117,39 @@ public class Gateway extends Thread {
 	private final String dbUser;
 	private final String dbPassword;
 
-	private final ExecutorService executor;
+	private final Log log;
 
-	public Gateway(int port, String dbUrl, String dbUser, String dbPassword) {
+	private final ExecutorService executor;
+	private boolean run;
+
+	public Gateway(int port, String dbUrl, String dbUser, String dbPassword,
+			PrintStream logOut, PrintStream logErr) {
 		this.port = port;
 		this.dbUrl = dbUrl;
 		this.dbUser = dbUser;
 		this.dbPassword = dbPassword;
+		this.log = new Log(logOut, logErr);
+		this.run = true;
 		executor = Executors.newFixedThreadPool(NUM_THREADS);
+	}
+
+	public Gateway(int port, String dbUrl, String dbUser, String dbPassword) {
+		this(port, dbUrl, dbUser, dbPassword, System.out, System.err);
+	}
+
+	public Gateway(int port, PrintStream logOut, PrintStream logErr) {
+		this(port, null, null, null, logOut, logErr);
 	}
 
 	public Gateway(int port) {
 		this(port, null, null, null);
+	}
+
+	/**
+	 * Informs the gateway that it should stop.
+	 */
+	public void quit() {
+		this.run = false;
 	}
 
 	@Override
@@ -141,22 +163,22 @@ public class Gateway extends Thread {
 			return;
 		}
 
-		Log.i(String.format("Starting gateway on port %d", port));
+		log.i(String.format("Starting gateway on port %d", port));
 
 		// Accept incoming connections, handle them on a background thread,
 		// and immediately begin listening for other incoming client
 		// connections.
-		while (true) {
+		while (run) {
 			try {
 				Socket clientSocket = serverSocket.accept();
-				Log.i(String.format("Accepted connection from %s:%d",
+				log.i(String.format("Accepted connection from %s:%d",
 						clientSocket.getInetAddress().getHostAddress(),
 						clientSocket.getPort()));
 				executor.execute(new ClientHandler(clientSocket, System
 						.currentTimeMillis()));
 
 			} catch (IOException e) {
-				Log.e("Exception when accepting connection", e);
+				log.e("Exception when accepting connection", e);
 				break;
 			}
 		}
@@ -165,7 +187,7 @@ public class Gateway extends Thread {
 			serverSocket.close();
 		} catch (IOException e) {
 			// Do nothing because we are exiting
-			Log.e("Exception when closing server socket", e);
+			log.e("Exception when closing server socket", e);
 		}
 	}
 
@@ -256,11 +278,11 @@ public class Gateway extends Thread {
 				}
 
 			} catch (IOException e) {
-				Log.e("Error reading client request", e);
+				log.e("Error reading client request", e);
 				return;
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Unknown error handling client request", e);
+				log.e("Unknown error handling client request", e);
 				return;
 			} finally {
 				try {
@@ -269,7 +291,7 @@ public class Gateway extends Thread {
 					}
 				} catch (IOException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing socket", e);
+					log.e("Exception when closing socket", e);
 				}
 			}
 		}
@@ -339,7 +361,7 @@ public class Gateway extends Thread {
 
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Error performing search using Google Places Search API",
+				log.e("Error performing search using Google Places Search API",
 						e);
 				writeErrorResponse(GATEWAY_SEARCH_ERROR,
 						"The Google Place Search could not be completed.", out);
@@ -351,7 +373,7 @@ public class Gateway extends Thread {
 					}
 				} catch (IOException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing socket", e);
+					log.e("Exception when closing socket", e);
 				}
 			}
 
@@ -397,7 +419,7 @@ public class Gateway extends Thread {
 
 			} catch (SQLException e) {
 				// Do nothing and do not write to database
-				Log.e("Error writing search to database", e);
+				log.e("Error writing search to database", e);
 				return false;
 			} finally {
 				try {
@@ -409,7 +431,7 @@ public class Gateway extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing database resources", e);
+					log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -454,7 +476,7 @@ public class Gateway extends Thread {
 
 			} catch (SQLException e) {
 				// Do nothing and do not write to database
-				Log.e("Error writing results to database", e);
+				log.e("Error writing results to database", e);
 				return false;
 			} finally {
 				try {
@@ -466,7 +488,7 @@ public class Gateway extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing database resources", e);
+					log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -516,7 +538,7 @@ public class Gateway extends Thread {
 
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Error executing database query", e);
+				log.e("Error executing database query", e);
 				writeErrorResponse(GATEWAY_QUERY_ERROR,
 						"The query could not be completed.", out);
 				return false;
@@ -533,7 +555,7 @@ public class Gateway extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing database resources", e);
+					log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -578,7 +600,7 @@ public class Gateway extends Thread {
 
 			} catch (Exception e) {
 				// Catch runtime exceptions
-				Log.e("Error adding user to database", e);
+				log.e("Error adding user to database", e);
 				writeErrorResponse(
 						GATEWAY_ADD_USER_ERROR,
 						"The new user could not be added to the database.  A user with the same username may already exist.",
@@ -594,7 +616,7 @@ public class Gateway extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing database resources", e);
+					log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -645,10 +667,10 @@ public class Gateway extends Thread {
 				}
 
 			} catch (SQLException e) {
-				Log.e("Error validating user credentials with database", e);
+				log.e("Error validating user credentials with database", e);
 				return false;
 			} catch (NoSuchAlgorithmException e) {
-				Log.e("Attempted to use invalid hash algorithm", e);
+				log.e("Attempted to use invalid hash algorithm", e);
 				return false;
 			} finally {
 				try {
@@ -663,7 +685,7 @@ public class Gateway extends Thread {
 					}
 				} catch (SQLException e) {
 					// Do nothing because we are exiting
-					Log.e("Exception when closing database resources", e);
+					log.e("Exception when closing database resources", e);
 				}
 			}
 
@@ -739,34 +761,31 @@ public class Gateway extends Thread {
 	 *
 	 * @param out
 	 *            the client output stream
+	 *
+	 * @throws SQLException
+	 *             if the query results could not be read
 	 */
-	private static void writeQueryResponse(ResultSet resultSet, PrintWriter out) {
-		try {
-			JSONObject jsonResponse = new JSONObject();
-			JSONArray jsonResults = new JSONArray();
-			ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
+	private static void writeQueryResponse(ResultSet resultSet, PrintWriter out)
+			throws SQLException {
+		JSONObject jsonResponse = new JSONObject();
+		JSONArray jsonResults = new JSONArray();
+		ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
 
-			while (resultSet.next()) {
-				JSONObject jsonResult = new JSONObject();
-				int cols = resultSetMetaData.getColumnCount();
-				for (int i = 1; i <= cols; i++) {
-					jsonResult.put(resultSetMetaData.getColumnLabel(i)
-							.toLowerCase(), resultSet.getObject(i));
-				}
-
-				jsonResults.put(jsonResult);
+		while (resultSet.next()) {
+			JSONObject jsonResult = new JSONObject();
+			int cols = resultSetMetaData.getColumnCount();
+			for (int i = 1; i <= cols; i++) {
+				jsonResult.put(resultSetMetaData.getColumnLabel(i)
+						.toLowerCase(), resultSet.getObject(i));
 			}
 
-			jsonResponse.put(RESPONSE_STATUS, OK);
-			jsonResponse.put(RESPONSE_RESULTS, jsonResults);
-
-			out.println(jsonResponse.toString(3));
-
-		} catch (SQLException e) {
-			Log.e("Error reading database query results", e);
-			writeErrorResponse(GATEWAY_QUERY_ERROR,
-					"The query results could not be read.", out);
+			jsonResults.put(jsonResult);
 		}
+
+		jsonResponse.put(RESPONSE_STATUS, OK);
+		jsonResponse.put(RESPONSE_RESULTS, jsonResults);
+
+		out.println(jsonResponse.toString(3));
 	}
 
 	/**
@@ -834,13 +853,15 @@ public class Gateway extends Thread {
 
 		} catch (IOException e) {
 			// Do nothing and start gateway without database
-			Log.e(String.format(
+			System.err.format(
 					"Error reading database connection information from %s",
-					PROPERTIES), e);
+					PROPERTIES);
+			System.err.flush();
+			e.printStackTrace();
 		}
 
 		// Start gateway server
-		Gateway server = new Gateway(8080, dbUrl, dbUsername, dbPassword);
-		server.start();
+		Gateway gateway = new Gateway(8080, dbUrl, dbUsername, dbPassword);
+		gateway.start();
 	}
 }
