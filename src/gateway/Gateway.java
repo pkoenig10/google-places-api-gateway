@@ -819,7 +819,7 @@ public class Gateway extends Thread {
 		return ALLOW_ANON_USERS;
 	}
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) {
 		Properties properties = new Properties();
 		String dbUrl = null;
 		String dbUsername = null;
