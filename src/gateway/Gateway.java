@@ -72,8 +72,8 @@ public class Gateway extends Thread {
 	private static final String QUERY_SUFFIX = " ORDER BY timestamp DESC LIMIT 20;";
 
 	// URL query parameters for the gateway
-	private static final String MY_USERNAME = "myusername";
-	private static final String MY_PASSWORD = "mypassword";
+	private static final String USERNAME = "username";
+	private static final String PASSWORD = "password";
 	private static final String NEW_USERNAME = "newusername";
 	private static final String NEW_PASSWORD = "newpassword";
 
@@ -240,8 +240,8 @@ public class Gateway extends Thread {
 				Request request = new Request(httpRequest[1]);
 
 				// Validate the user credentials
-				String username = request.get(MY_USERNAME);
-				String password = request.get(MY_PASSWORD);
+				String username = request.get(USERNAME);
+				String password = request.get(PASSWORD);
 				if (!validateUser(username, password)) {
 					writeErrorResponse(GATEWAY_AUTHENTICATION_FAILED,
 							"The provided credentials failed authentication.",
@@ -365,7 +365,7 @@ public class Gateway extends Thread {
 				if (dbUrl != null
 						&& jsonResponse.getString(RESPONSE_STATUS).equals(OK)) {
 					writeSearch(request, searchType);
-					writeResults(request.get(MY_USERNAME),
+					writeResults(request.get(USERNAME),
 							jsonResponse.getJSONArray(RESPONSE_RESULTS));
 				}
 
@@ -411,7 +411,7 @@ public class Gateway extends Thread {
 				statement.setObject(1, sessionId);
 				statement.setTimestamp(2, new Timestamp(timestamp));
 				statement.setString(3, searchType);
-				statement.setString(4, request.get(MY_USERNAME));
+				statement.setString(4, request.get(USERNAME));
 				statement.setString(5, request.get(QUERY));
 				statement.setString(6, request.get(LOCATION));
 				statement.setString(7, request.get(RADIUS));

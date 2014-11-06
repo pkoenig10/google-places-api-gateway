@@ -35,7 +35,7 @@ public class UserTest {
 		System.out.format("Invalid user%n%n");
 		TestUtils
 				.doRequest(String
-						.format("http://localhost:%d/google-places-api-gateway/nearbysearch?myusername=invalid&mypassword=invalid&location=-33.8670522,151.1957362&radius=500&types=food&name=cruise&key=%s",
+						.format("http://localhost:%d/google-places-api-gateway/nearbysearch?username=invalid&password=invalid&location=-33.8670522,151.1957362&radius=500&types=food&name=cruise&key=%s",
 								PORT, API_KEY));
 	}
 
@@ -62,7 +62,7 @@ public class UserTest {
 
 		TestUtils
 				.doRequest(String
-						.format("http://localhost:%d/google-places-api-gateway/nearbysearch?myusername=pkoenig&mypassword=wordpass&location=-33.8670522,151.1957362&radius=500&types=food&name=cruise&key=%s",
+						.format("http://localhost:%d/google-places-api-gateway/nearbysearch?username=pkoenig&password=wordpass&location=-33.8670522,151.1957362&radius=500&types=food&name=cruise&key=%s",
 								PORT, API_KEY));
 	}
 
