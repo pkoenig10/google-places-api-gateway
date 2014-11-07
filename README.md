@@ -1,4 +1,4 @@
-# Google Place Search API Gateway
+# Google Places API Gateway
 
 A simple Java API management gateway for the Google Place Search API.  The gateway writes all requests and response to a database and allows users to query this database to analyze gateway usage.  The gateway also supports user authentication to only allow access to registered users and to track user activity on the gateway.
 
