@@ -15,7 +15,7 @@ The connection database requires three tables
  * `searches` - Contains searches
  * `results` - Contains the results of searches
  * `users` - Contains users authentication information
- 
+
 ### Searches table
 
 The following command creates a correctly formatted `searches` table on an SQLite database
@@ -26,7 +26,7 @@ id serial primary key,
 sessionid uuid not null,
 timestamp timestamp not null,
 searchtype text,
-username text, 
+user text,
 query text,
 key text,
 location text,
@@ -52,7 +52,7 @@ CREATE TABLE results (
 id serial primary key,
 sessionid uuid not null,
 timestamp timestamp not null,
-username text,
+user text,
 placeid text,
 lat real,
 lng real);
@@ -94,7 +94,7 @@ http://<hostname>:<port>/google-places-api-gateway/<searchtype>?<parameters>
  * `nearbysearch` - Indicates a Nearby Search request using the Google Plcae Search API.
  * `textsearch` - Indicates a Text Search request using the Google Plcae Search API.
  * `nearbysearch` - Indicates a Radar Search request using the Google Plcae Search API.
-  
+
 `parameters` are the parameters for the search.  For each search type, the gateway requires all required parameters and supports all optional parameters detailed in the [Google Place Search API documentation](https://developers.google.com/places/documentation/search).  In addition the gateway also supports the following optional parameters
 
  * `username` - A username to authenticate the user and allow access to the gateway.  If you specifiy a `username` parameter, you must also specifiy a `password` parameter.
@@ -118,13 +118,13 @@ http://<hostname>:<port>/google-places-api-gateway/searchquery?<parameters>
 `hostname` is the hostname of the gateway.
 
 `port` is the port the gateway is listening on.
- 
+
 `parameters` are the parameters for the query.  For any specified parameter, the query will only return records with values equal to that parameter.  A Search Query supports all required and optional search parameters for any type of search detailed in the [Google Place Search API documentation](https://developers.google.com/places/documentation/search).  In addition the gateway also supports the following Search Query parameters
 
  * `sessionid` - A universally unique identifier (UUID) used to identify a single session consisting of a search and a collection of results
- * `username` - The username of the user who made the search request.  This value will be `null` for anonymous requests.
+ * `user` - The username of the user who made the search request.  This value will be `null` for anonymous requests.
  * `searchtype` - The type of search.  Valid values include `nearby`, `text', and 'radar'.
-   
+
 ### Result Query
 
 A gateway result query request is a HTTP request of the following form
@@ -136,15 +136,15 @@ http://<hostname>:<port>/google-places-api-gateway/resultquery?<parameters>
 `hostname` is the hostname of the gateway.
 
 `port` is the port the gateway is listening on.
- 
+
 `parameters` are the parameters for the query.  For any specified parameter, the query will only return records with values equal to that parameter.  The gateway supports the following Result Query parameters
 
  * `sessionid` - A universally unique identifier (UUID) used to identify a single session consisting of a search and a collection of results
- * `username` - The username of the user who made the search request.  This value will be `null` for anonymous requests.
+ * `user` - The username of the user who made the search request.  This value will be `null` for anonymous requests.
  * `placeid` - A unique identifier for a place.
  * `lat` - The latitude of a result.
  * `lng` - The longitude of a result.
- 
+
 ## User Requests
 
 The gateway supports user authentication to only allow access to registered users.  The gateway can be configured to allow or deny requests from users who do not provide credentials in their request.  User request allow for new users to be added to the database.
@@ -168,7 +168,7 @@ The gateway will return an error response if the new username already exists in 
 ## Output
 
 All output is returned in JavaScript Object Notation (JSON).  All repsonses have the following fields
- 
+
  * `results` - An array of results of a search or query request.  For users request this field will be an empty array.
  * `status` - The status of the request.  See Status Codes below for more information.
  * `error_message` - A more detailed error message.
