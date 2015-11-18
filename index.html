@@ -1,0 +1,282 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Google Places API Gateway by pkoenig10</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-light.css">
+    <meta name="viewport" content="width=device-width">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Google Places API Gateway</h1>
+        <p>A simple Java API management gateway for the Google Place Search API.</p>
+
+        <p class="view"><a href="https://github.com/pkoenig10/google-places-api-gateway">View the Project on GitHub <small>pkoenig10/google-places-api-gateway</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/pkoenig10/google-places-api-gateway/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/pkoenig10/google-places-api-gateway/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/pkoenig10/google-places-api-gateway">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>
+<a id="google-places-api-gateway" class="anchor" href="#google-places-api-gateway" aria-hidden="true"><span class="octicon octicon-link"></span></a>Google Places API Gateway</h1>
+
+<p>A simple Java API management gateway for the Google Place Search API.  The gateway writes all requests and response to a database and allows users to query this database to analyze gateway usage.  The gateway also supports user authentication to only allow access to registered users and to track user activity on the gateway.</p>
+
+<p>Documenatation for the Google Place Search API can be found at <a href="https://developers.google.com/places/documentation/search">https://developers.google.com/places/documentation/search</a></p>
+
+<h2>
+<a id="installation-and-setup" class="anchor" href="#installation-and-setup" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation and Setup</h2>
+
+<p>To run the gateway simply pull the source code from this repostory.  Open the Java project and run the file <code>Gateway.java</code>.  The default configuration listens on port 8080 and writes searches and results to a local SQLite database.  The port number can be changed in the source code.  The database connection information can be changed in the <code>gateway.properties</code> file, which is read by the gateway on startup.</p>
+
+<h3>
+<a id="database-configuration" class="anchor" href="#database-configuration" aria-hidden="true"><span class="octicon octicon-link"></span></a>Database Configuration</h3>
+
+<p>The connection database requires three tables</p>
+
+<ul>
+<li>
+<code>searches</code> - Contains searches</li>
+<li>
+<code>results</code> - Contains the results of searches</li>
+<li>
+<code>users</code> - Contains users authentication information</li>
+</ul>
+
+<h3>
+<a id="searches-table" class="anchor" href="#searches-table" aria-hidden="true"><span class="octicon octicon-link"></span></a>Searches table</h3>
+
+<p>The following command creates a correctly formatted <code>searches</code> table on an SQLite database</p>
+
+<pre><code>CREATE TABLE searches (
+id serial primary key,
+sessionid uuid not null,
+timestamp timestamp not null,
+searchtype text,
+user text,
+query text,
+key text,
+location text,
+radius text,
+keyword text,
+language text,
+minprice text,
+maxprice text,
+name text,
+opennow text,
+rankby text,
+types text,
+pagetoken text,
+zagatselected text);
+</code></pre>
+
+<h3>
+<a id="results-table" class="anchor" href="#results-table" aria-hidden="true"><span class="octicon octicon-link"></span></a>Results table</h3>
+
+<p>The following command creates a correctly formatted <code>results</code> table on an SQLite database</p>
+
+<pre><code>CREATE TABLE results (
+id serial primary key,
+sessionid uuid not null,
+timestamp timestamp not null,
+user text,
+placeid text,
+lat real,
+lng real);
+</code></pre>
+
+<h3>
+<a id="users-table" class="anchor" href="#users-table" aria-hidden="true"><span class="octicon octicon-link"></span></a>Users table</h3>
+
+<p>The following command creates a correctly formatted <code>users</code> table on an SQLite database</p>
+
+<pre><code>CREATE TABLE users (
+id serial primary key,
+sessionid uuid not null,
+username text not null,
+salt text not null,
+passhash text not null);
+</code></pre>
+
+<h2>
+<a id="search-requests" class="anchor" href="#search-requests" aria-hidden="true"><span class="octicon octicon-link"></span></a>Search Requests</h2>
+
+<p>Search request allow for using the Google Place Search API to search for places based on a number of parameters.  The Google Place Search API consists of three types of searches</p>
+
+<ul>
+<li>Nearby Search</li>
+<li>Text Search</li>
+<li>Radar Search</li>
+</ul>
+
+<p>A gateway place search request is a HTTP request of the following form</p>
+
+<pre><code>http://&lt;hostname&gt;:&lt;port&gt;/google-places-api-gateway/&lt;searchtype&gt;?&lt;parameters&gt;
+</code></pre>
+
+<p><code>hostname</code> is the hostname of the gateway.</p>
+
+<p><code>port</code> is the port the gateway is listening on.</p>
+
+<p><code>seachtype</code> is one of the following values</p>
+
+<ul>
+<li>
+<code>nearbysearch</code> - Indicates a Nearby Search request using the Google Plcae Search API.</li>
+<li>
+<code>textsearch</code> - Indicates a Text Search request using the Google Plcae Search API.</li>
+<li>
+<code>nearbysearch</code> - Indicates a Radar Search request using the Google Plcae Search API.</li>
+</ul>
+
+<p><code>parameters</code> are the parameters for the search.  For each search type, the gateway requires all required parameters and supports all optional parameters detailed in the <a href="https://developers.google.com/places/documentation/search">Google Place Search API documentation</a>.  In addition the gateway also supports the following optional parameters</p>
+
+<ul>
+<li>
+<code>username</code> - A username to authenticate the user and allow access to the gateway.  If you specifiy a <code>username</code> parameter, you must also specifiy a <code>password</code> parameter.</li>
+<li>
+<code>password</code> - A password to authenticate the user and allow access to the gateway.  If you specifiy a <code>password</code> parameter, you must also specifiy a <code>username</code> parameter.</li>
+</ul>
+
+<h2>
+<a id="query-requests" class="anchor" href="#query-requests" aria-hidden="true"><span class="octicon octicon-link"></span></a>Query Requests</h2>
+
+<p>Query requests allow for querying the database of past searches and results.  There are two types of gateway queries</p>
+
+<ul>
+<li>Search Query - A query on the search requests handled by the gateway.</li>
+<li>Result Query - A query on the search results returned by the gateway.</li>
+</ul>
+
+<h3>
+<a id="search-query" class="anchor" href="#search-query" aria-hidden="true"><span class="octicon octicon-link"></span></a>Search Query</h3>
+
+<p>A gateway search query request is a HTTP request of the following form</p>
+
+<pre><code>http://&lt;hostname&gt;:&lt;port&gt;/google-places-api-gateway/searchquery?&lt;parameters&gt;
+</code></pre>
+
+<p><code>hostname</code> is the hostname of the gateway.</p>
+
+<p><code>port</code> is the port the gateway is listening on.</p>
+
+<p><code>parameters</code> are the parameters for the query.  For any specified parameter, the query will only return records with values equal to that parameter.  A Search Query supports all required and optional search parameters for any type of search detailed in the <a href="https://developers.google.com/places/documentation/search">Google Place Search API documentation</a>.  In addition the gateway also supports the following Search Query parameters</p>
+
+<ul>
+<li>
+<code>sessionid</code> - A universally unique identifier (UUID) used to identify a single session consisting of a search and a collection of results</li>
+<li>
+<code>user</code> - The username of the user who made the search request.  This value will be <code>null</code> for anonymous requests.</li>
+<li>
+<code>searchtype</code> - The type of search.  Valid values include <code>nearby</code>, `text', and 'radar'.</li>
+</ul>
+
+<h3>
+<a id="result-query" class="anchor" href="#result-query" aria-hidden="true"><span class="octicon octicon-link"></span></a>Result Query</h3>
+
+<p>A gateway result query request is a HTTP request of the following form</p>
+
+<pre><code>http://&lt;hostname&gt;:&lt;port&gt;/google-places-api-gateway/resultquery?&lt;parameters&gt;
+</code></pre>
+
+<p><code>hostname</code> is the hostname of the gateway.</p>
+
+<p><code>port</code> is the port the gateway is listening on.</p>
+
+<p><code>parameters</code> are the parameters for the query.  For any specified parameter, the query will only return records with values equal to that parameter.  The gateway supports the following Result Query parameters</p>
+
+<ul>
+<li>
+<code>sessionid</code> - A universally unique identifier (UUID) used to identify a single session consisting of a search and a collection of results</li>
+<li>
+<code>user</code> - The username of the user who made the search request.  This value will be <code>null</code> for anonymous requests.</li>
+<li>
+<code>placeid</code> - A unique identifier for a place.</li>
+<li>
+<code>lat</code> - The latitude of a result.</li>
+<li>
+<code>lng</code> - The longitude of a result.</li>
+</ul>
+
+<h2>
+<a id="user-requests" class="anchor" href="#user-requests" aria-hidden="true"><span class="octicon octicon-link"></span></a>User Requests</h2>
+
+<p>The gateway supports user authentication to only allow access to registered users.  The gateway can be configured to allow or deny requests from users who do not provide credentials in their request.  User request allow for new users to be added to the database.</p>
+
+<p>A gateway Add User request is a HTTP request of the following form</p>
+
+<pre><code>http://&lt;hostname&gt;:&lt;port&gt;/google-places-api-gateway/adduser?newusername=&lt;username&gt;&amp;newpassword=&lt;password&gt;
+</code></pre>
+
+<p><code>hostname</code> is the hostname of the gateway.</p>
+
+<p><code>port</code> is the port the gateway is listening on.</p>
+
+<p><code>username</code> is the username of the user to be added</p>
+
+<p><code>password</code> is the password of the user to be added</p>
+
+<p>The gateway will return an error response if the new username already exists in the database.</p>
+
+<h2>
+<a id="output" class="anchor" href="#output" aria-hidden="true"><span class="octicon octicon-link"></span></a>Output</h2>
+
+<p>All output is returned in JavaScript Object Notation (JSON).  All repsonses have the following fields</p>
+
+<ul>
+<li>
+<code>results</code> - An array of results of a search or query request.  For users request this field will be an empty array.</li>
+<li>
+<code>status</code> - The status of the request.  See Status Codes below for more information.</li>
+<li>
+<code>error_message</code> - A more detailed error message.</li>
+</ul>
+
+<p>The output for search requests is simply forwarded repsonse from the Google Place Search API.  The output is identical to the output detailed in the <a href="https://developers.google.com/places/documentation/search#PlaceSearchResponses">Google Place Search API documentation</a>.</p>
+
+<p>The output for query requests contains the results of the query are placed in the <code>results</code> field.  The <code>status</code> field indiciates whether the query was successul.</p>
+
+<p>The output for query requests contains an empty <code>results</code> field.  The <code>status</code> field indiciates whether the request was successful.</p>
+
+<h3>
+<a id="status-codes" class="anchor" href="#status-codes" aria-hidden="true"><span class="octicon octicon-link"></span></a>Status Codes</h3>
+
+<p>The output for search requests contains status codes detailed in the <a href="https://developers.google.com/places/documentation/search##PlaceSearchStatusCodes">Google Place Search API documentation</a>.  In addition the gateway may also output the following status codes</p>
+
+<ul>
+<li>
+<code>OK</code> - Indicates that no errors occured.</li>
+<li>
+<code>GATEWAY_INVALID_REQUEST</code> - Indicates that the gateway could not read the HTTP request.  Ensure that your HTTP request is being sent properly.</li>
+<li>
+<code>GATEWAY_INVALID_URL</code> - Indicates that the gateway does support the path provided in the URL.  Ensure that your request URL matches one of the above formats.</li>
+<li>
+<code>GATEWAY_AUTHENTICATION_FAILED</code> - Indicates that user authentication failed.  Ensure that you are prividing valid credendtials have registered with the gateway.</li>
+<li>
+<code>GATEWAY_SEARCH_ERROR</code> - Indicates that an error occured while performing a search request.  Ensure that your request includes all required parameters and only contains supported parameters.</li>
+<li>
+<code>GATEWAY_QUERY_ERROR</code> - Indicates that an error occured while performing a query request.  Ensure that your request only contains supported parameters.</li>
+<li>
+<code>GATEWAY_ADD_USER_ERROR</code> - Indicates that an error occured while attempting to register a new user.  This is often because the request username is already taken.  Try submitting another request with a different username.</li>
+</ul>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/pkoenig10">pkoenig10</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
